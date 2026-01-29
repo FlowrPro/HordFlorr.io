@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Moborr.io — Player Demo</title>
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Firebase client libs (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <canvas id="game" tabindex="0"></canvas>
+
+  <!-- Title / login screen (full-screen) -->
+  <div id="titleScreen" aria-hidden="false">
+    <h1>Moborr.io</h1>
+
+    <div id="loginBox">
+      <input id="username" type="text" placeholder="Enter username" maxlength="24" />
+      <button id="playButton" type="button">Play (guest)</button>
+      <button id="googleSignIn" type="button">Sign in with Google</button>
+    </div>
+  </div>
+
+  <!-- Settings button (top-left) -->
+  <button id="settingsBtn" title="Settings" aria-expanded="false">⚙</button>
+
+  <!-- Settings panel (full markup) -->
+  <div id="settingsPanel" aria-hidden="true">
+    <div class="settingsHeader">
+      <div class="settingsTitle">Settings</div>
+      <button id="settingsClose" class="closeBtn" title="Close">✕</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tabButton active" data-tab="graphics">Graphics</button>
+      <button class="tabButton" data-tab="movement">Movement</button>
+    </div>
+
+    <div class="tabContents">
+      <div class="tabContent" data-name="graphics">
+        <!-- Graphics settings -->
+        <div class="settingRow">
+          <label>Graphics quality</label>
+          <select id="graphicsQuality">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+
+        <div class="settingRow">
+          <label>
+            <input type="checkbox" id="showCoordinates" />
+            Show coordinates (bottom-right)
+          </label>
+        </div>
+      </div>
+
+      <div class="tabContent hidden" data-name="movement">
+        <div class="settingRow">
+          <label>
+            <input type="checkbox" id="mouseMovement" />
+            Mouse movement (move toward mouse pointer)
+          </label>
+        </div>
+
+        <div class="settingRow">
+          <label>
+            <input type="checkbox" id="keyboardMovement" />
+            Keyboard movement (WASD / arrows)
+          </label>
+        </div>
+
+        <div class="settingRow">
+          <label>
+            <input type="checkbox" id="clickMovement" />
+            Click movement (move to clicked location)
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat (bottom-left) -->
+  <div id="chat" aria-hidden="true">
+    <div id="chatMessages" role="log" aria-live="polite"></div>
+    <div id="chatInputWrap" class="hidden">
+      <input id="chatInput" type="text" maxlength="240" autocomplete="off" />
+    </div>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>

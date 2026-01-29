@@ -19,6 +19,26 @@ firebase.initializeApp(firebaseConfig);
 const fbAuth = firebase.auth();
 const fbDb = firebase.firestore?.(); // optional if you want later
 
+// If the page is loaded after a redirect sign-in, handle the result:
+fbAuth.getRedirectResult()
+  .then(async (result) => {
+    if (result && result.user) {
+      const user = result.user;
+      try {
+        const idToken = await user.getIdToken();
+        localStorage.setItem('moborr_idtoken', idToken);
+        // Optionally auto-connect here if you want:
+        // connectToServer(idToken);
+      } catch (e) {
+        console.warn('Failed to obtain idToken from redirect result', e);
+      }
+    }
+  })
+  .catch((err) => {
+    // ignore redirect errors for now, but log
+    console.warn('getRedirectResult error', err && err.code, err && err.message);
+  });
+
 (() => {
   // ----- DOM -----
   const canvas = document.getElementById('game');
@@ -607,22 +627,31 @@ const fbDb = firebase.firestore?.(); // optional if you want later
   if (playButton) playButton.addEventListener('click', startGame);
   if (usernameInput) usernameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); startGame(); } });
 
-  // Google sign-in button: popup, store idToken, connect
+  // Google sign-in button: popup first, fallback to redirect
   if (googleSignInBtn) {
     googleSignInBtn.addEventListener('click', async () => {
       try {
         googleSignInBtn.disabled = true;
         const provider = new firebase.auth.GoogleAuthProvider();
-        const result = await fbAuth.signInWithPopup(provider);
-        const user = result.user;
-        if (user && user.displayName) {
-          player.name = user.displayName;
-          if (usernameInput) usernameInput.value = user.displayName;
+
+        // Try popup first (better UX). If it fails due to environment, fallback to redirect.
+        try {
+          const result = await fbAuth.signInWithPopup(provider);
+          const user = result.user;
+          if (user && user.displayName) {
+            player.name = user.displayName;
+            if (usernameInput) usernameInput.value = user.displayName;
+          }
+          const idToken = await user.getIdToken();
+          localStorage.setItem('moborr_idtoken', idToken);
+          if (titleScreen) titleScreen.setAttribute('aria-hidden','true');
+          connectToServer(idToken);
+        } catch (popupErr) {
+          // Popup failed (e.g. auth/operation-not-supported-in-this-environment) — fall back to redirect flow
+          console.warn('Popup sign-in failed, falling back to redirect:', popupErr && popupErr.code, popupErr && popupErr.message);
+          await fbAuth.signInWithRedirect(provider);
+          // After redirect completes, fbAuth.getRedirectResult() above will handle the result and store idToken
         }
-        const idToken = await user.getIdToken();
-        localStorage.setItem('moborr_idtoken', idToken);
-        if (titleScreen) titleScreen.setAttribute('aria-hidden','true');
-        connectToServer(idToken);
       } catch (err) {
         console.error('Google sign-in failed', err); alert('Google sign-in failed. See console for details.');
       } finally {

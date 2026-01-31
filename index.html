@@ -3,93 +3,158 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Moborr.io — Player Demo</title>
+  <title>Circle Map — Player Demo</title>
   <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Loading screen: full-screen, opaque, centered content */
+    #loadingScreen {
+      position: absolute;
+      inset: 0;
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      background: #8b5a2b; /* match title background, fully opaque so map not visible */
+      color: #111;
+      pointer-events: auto;
+    }
+    #loadingScreen[aria-hidden="false"] { display: flex; }
 
-  <!-- Firebase client libs (compat) -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    .loadingBox {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      text-align: center;
+    }
+
+    /* Big player avatar shown while loading */
+    .loadingPlayer {
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: #ffd54a;
+      position: relative;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .loadingPlayer .eye {
+      width: 44px;
+      height: 44px;
+      background: #fff;
+      border-radius: 50%;
+      position: absolute;
+    }
+    .loadingPlayer .eye.left { left: 60px; top: 80px; }
+    .loadingPlayer .eye.right { right: 60px; top: 80px; }
+    .loadingPlayer .pupil {
+      width: 18px;
+      height: 18px;
+      background: #000;
+      border-radius: 50%;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .loadingText {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .loadingSub {
+      font-size: 13px;
+      color: rgba(255,255,255,0.9);
+    }
+
+    @media (max-width: 480px) {
+      .loadingPlayer { width: 150px; height: 150px; }
+      .loadingPlayer .eye { width: 30px; height: 30px; top: 55px; }
+      .loadingPlayer .eye.left { left: 38px; } .loadingPlayer .eye.right { right: 38px; }
+      .loadingPlayer .pupil { width: 12px; height: 12px; }
+    }
+  </style>
 </head>
 <body>
   <canvas id="game" tabindex="0"></canvas>
 
-  <!-- Title / login screen (full-screen) -->
+  <!-- Title / login screen -->
   <div id="titleScreen" aria-hidden="false">
     <h1>Moborr.io</h1>
 
-    <div id="loginBox">
-      <input id="username" type="text" placeholder="Enter username" maxlength="24" />
-      <button id="playButton" type="button">Play (guest)</button>
-      <button id="googleSignIn" type="button">Sign in with Google</button>
+    <div id="loginBox" role="dialog" aria-label="Login">
+      <input id="username" type="text" placeholder="Enter a display name" maxlength="24" />
+      <button id="playButton" type="button">Play</button>
+    </div>
+
+    <div style="margin-bottom: 40px; color: rgba(0,0,0,0.65);">Use keyboard, mouse or click-to-move (toggle in settings)</div>
+  </div>
+
+  <!-- Loading screen (shown after Play is clicked) -->
+  <div id="loadingScreen" aria-hidden="true" role="status" aria-live="polite">
+    <div class="loadingBox">
+      <div id="loadingPlayer" class="loadingPlayer" aria-hidden="true">
+        <div class="eye left"><div class="pupil"></div></div>
+        <div class="eye right"><div class="pupil"></div></div>
+      </div>
+      <div id="loadingText" class="loadingText">Loading…</div>
+      <div id="loadingSub" class="loadingSub">Preparing the world</div>
+      <div id="loadingPlayerName" style="margin-top:6px; color:#fff; font-weight:700;"></div>
     </div>
   </div>
 
-  <!-- Settings button (top-left) -->
-  <button id="settingsBtn" title="Settings" aria-expanded="false">⚙</button>
+  <!-- Settings button -->
+  <button id="settingsBtn" aria-expanded="false" title="Settings">⚙</button>
 
-  <!-- Settings panel (full markup) -->
+  <!-- Settings panel -->
   <div id="settingsPanel" aria-hidden="true">
     <div class="settingsHeader">
       <div class="settingsTitle">Settings</div>
       <button id="settingsClose" class="closeBtn" title="Close">✕</button>
     </div>
 
-    <div class="tabs">
-      <button class="tabButton active" data-tab="graphics">Graphics</button>
-      <button class="tabButton" data-tab="movement">Movement</button>
+    <div class="tabs" role="tablist" aria-label="Settings Tabs">
+      <button class="tabButton active" data-tab="controls" role="tab" aria-selected="true">Controls</button>
+      <button class="tabButton" data-tab="graphics" role="tab" aria-selected="false">Graphics</button>
     </div>
 
     <div class="tabContents">
-      <div class="tabContent" data-name="graphics">
-        <!-- Graphics settings -->
+      <div class="tabContent" data-name="controls">
         <div class="settingRow">
-          <label>Graphics quality</label>
+          <input id="keyboardMovement" type="checkbox" />
+          <label for="keyboardMovement">Keyboard movement (WASD / Arrows)</label>
+        </div>
+        <div class="settingRow">
+          <input id="mouseMovement" type="checkbox" />
+          <label for="mouseMovement">Mouse movement (face cursor)</label>
+        </div>
+        <div class="settingRow">
+          <input id="clickMovement" type="checkbox" />
+          <label for="clickMovement">Click-to-move</label>
+        </div>
+        <div class="settingRow">
+          <input id="showCoordinates" type="checkbox" />
+          <label for="showCoordinates">Show coordinates</label>
+        </div>
+      </div>
+
+      <div class="tabContent hidden" data-name="graphics">
+        <div class="settingRow">
+          <label for="graphicsQuality">Graphics quality</label>
           <select id="graphicsQuality">
             <option value="low">Low</option>
             <option value="medium" selected>Medium</option>
             <option value="high">High</option>
           </select>
         </div>
-
         <div class="settingRow">
-          <label>
-            <input type="checkbox" id="showCoordinates" />
-            Show coordinates (bottom-right)
-          </label>
+          <small style="color:#444">Adjust details to improve performance on slower devices.</small>
         </div>
       </div>
-
-      <div class="tabContent hidden" data-name="movement">
-        <div class="settingRow">
-          <label>
-            <input type="checkbox" id="mouseMovement" />
-            Mouse movement (move toward mouse pointer)
-          </label>
-        </div>
-
-        <div class="settingRow">
-          <label>
-            <input type="checkbox" id="keyboardMovement" />
-            Keyboard movement (WASD / arrows)
-          </label>
-        </div>
-
-        <div class="settingRow">
-          <label>
-            <input type="checkbox" id="clickMovement" />
-            Click movement (move to clicked location)
-          </label>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Chat (bottom-left) -->
-  <div id="chat" aria-hidden="true">
-    <div id="chatMessages" role="log" aria-live="polite"></div>
-    <div id="chatInputWrap" class="hidden">
-      <input id="chatInput" type="text" maxlength="240" autocomplete="off" />
     </div>
   </div>
 

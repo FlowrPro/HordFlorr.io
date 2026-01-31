@@ -15,6 +15,8 @@
   const usernameInput = document.getElementById('username');
   const playButton = document.getElementById('playButton');
 
+  const loadingScreen = document.getElementById('loadingScreen');
+
   const settingsBtn = document.getElementById('settingsBtn');
   const settingsPanel = document.getElementById('settingsPanel');
   const settingsClose = document.getElementById('settingsClose');
@@ -322,15 +324,31 @@
   const savedName = localStorage.getItem('moborr_username');
   if (savedName && usernameInput) usernameInput.value = savedName;
 
+  // Loading guard
+  let isLoading = false;
   function startGame() {
+    if (isLoading) return;
+    isLoading = true;
+
     const name = usernameInput && usernameInput.value.trim() ? usernameInput.value.trim() : 'Player';
     player.name = name;
     localStorage.setItem('moborr_username', name);
-    if (titleScreen) titleScreen.setAttribute('aria-hidden', 'true');
 
-    // connect to server
-    connectToServer();
-    canvas.focus?.();
+    // hide title screen and show loading screen
+    if (titleScreen) titleScreen.setAttribute('aria-hidden', 'true');
+    if (loadingScreen) loadingScreen.setAttribute('aria-hidden', 'false');
+
+    // disable inputs in the login box while loading (prevent double clicks)
+    if (playButton) playButton.disabled = true;
+    if (usernameInput) usernameInput.disabled = true;
+
+    // show loading for 3 seconds, then connect and enter game
+    setTimeout(() => {
+      if (loadingScreen) loadingScreen.setAttribute('aria-hidden', 'true');
+      // connect to server
+      connectToServer();
+      canvas.focus?.();
+    }, 3000);
   }
   if (playButton) playButton.addEventListener('click', startGame);
   if (usernameInput) usernameInput.addEventListener('keydown', (e) => {

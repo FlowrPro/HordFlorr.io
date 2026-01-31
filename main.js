@@ -16,6 +16,9 @@
   const playButton = document.getElementById('playButton');
 
   const loadingScreen = document.getElementById('loadingScreen');
+  const loadingPlayerEl = document.getElementById('loadingPlayer');
+  const loadingPlayerNameEl = document.getElementById('loadingPlayerName');
+  const loadingTextEl = document.getElementById('loadingText');
 
   const settingsBtn = document.getElementById('settingsBtn');
   const settingsPanel = document.getElementById('settingsPanel');
@@ -334,7 +337,14 @@
     player.name = name;
     localStorage.setItem('moborr_username', name);
 
-    // hide title screen and show loading screen
+    // set loading player visuals
+    if (loadingPlayerEl) {
+      loadingPlayerEl.style.background = player.color || '#ffd54a';
+    }
+    if (loadingPlayerNameEl) loadingPlayerNameEl.textContent = player.name || '';
+    if (loadingTextEl) loadingTextEl.textContent = 'Loading…';
+
+    // hide title screen and show loading screen (fullscreen opaque)
     if (titleScreen) titleScreen.setAttribute('aria-hidden', 'true');
     if (loadingScreen) loadingScreen.setAttribute('aria-hidden', 'false');
 
@@ -345,6 +355,7 @@
     // show loading for 3 seconds, then connect and enter game
     setTimeout(() => {
       if (loadingScreen) loadingScreen.setAttribute('aria-hidden', 'true');
+      isLoading = false; // allow rendering again
       // connect to server
       connectToServer();
       canvas.focus?.();
@@ -690,6 +701,12 @@
   function loop(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+
+    // If loading: skip rendering world so nothing shows underneath loading screen.
+    if (isLoading) {
+      requestAnimationFrame(loop);
+      return;
+    }
 
     const titleVisible = titleScreen && titleScreen.getAttribute('aria-hidden') !== 'true';
     const settingsOpen = settingsPanel && settingsPanel.getAttribute('aria-hidden') === 'false';

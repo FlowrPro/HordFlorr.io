@@ -38,6 +38,14 @@
   const graphicsQuality = document.getElementById('graphicsQuality');
   const showCoordinatesCheckbox = document.getElementById('showCoordinates');
 
+  // Skill tooltip (create DOM element)
+  const skillTooltip = document.createElement('div');
+  skillTooltip.id = 'skillTooltip';
+  skillTooltip.style.position = 'fixed';
+  skillTooltip.style.pointerEvents = 'none';
+  skillTooltip.style.display = 'none';
+  document.body.appendChild(skillTooltip);
+
   // Hide chat panel until game is ready
   if (chatPanel) chatPanel.style.display = 'none';
   // Disable chat input until ready
@@ -71,7 +79,7 @@
     x: 0, y: 0,
     radius: 28,
     color: '#ffd54a',
-    speed: 380,
+    baseSpeed: 380,
     vx: 0, vy: 0,           // smoothed velocity used locally
     facing: -Math.PI / 2,
     name: '',
@@ -79,8 +87,19 @@
     level: 1,
     xp: 0,
     serverX: null,
-    serverY: null
+    serverY: null,
+    // local buffs for immediate feedback (server authoritative)
+    localBuffs: [] // { type, until, multiplier }
   };
+
+  // helper to get current client-side speed (considers local buffs)
+  function currentClientSpeed() {
+    let mult = 1;
+    const now = Date.now();
+    player.localBuffs = player.localBuffs.filter(b => b.until > now);
+    for (const b of player.localBuffs) mult *= (b.multiplier || 1);
+    return player.baseSpeed * mult;
+  }
 
   // --- Movement smoothing / interp params ---
   const MOVE_ACCEL = 18.0;
@@ -93,10 +112,13 @@
   const remotePlayers = new Map();
 
   // --- Remote mobs (client-side) ---
-  const remoteMobs = new Map(); // id -> { id, type, targetX,targetY, displayX,displayY, vx,vy, hp, maxHp, radius, color, alpha }
+  const remoteMobs = new Map(); // id -> { id, type, targetX,targetY, displayX,displayY, vx,vy, hp, maxHp, radius, color, alpha, dead }
 
   // --- Remote projectiles (client-side) ---
   const remoteProjectiles = new Map(); // id -> { id, type, targetX, targetY, displayX, displayY, vx, vy, radius, owner, alpha }
+
+  // --- Client-side visual effects (AoE rings, explosions, buff visuals, XP pop, melee) ---
+  const remoteEffects = []; // { type:'aoe'|'explosion'|'buff'|'melee'|'xp', x,y, radius, color, start, duration, text }
 
   // --- Input state ---
   const keys = {};
@@ -117,6 +139,44 @@
     mage:    [2.5, 6.5, 9.0, 22.0]
   };
   const cooldowns = new Array(HOTBAR_SLOTS).fill(0);
+
+  // --- Client-side skill meta (mirrors server definitions for tooltip & visuals) ---
+  const SKILL_META = {
+    warrior: [
+      { name: 'Slash', type: 'slash', kind: 'melee', damage: 60, range: 48, cooldown: 3.5, color: 'rgba(255,160,80,0.9)' },
+      { name: 'Shield Bash', type: 'shieldbash', kind: 'aoe', damage: 40, radius: 48, cooldown: 7.0, color: 'rgba(200,200,255,0.9)' },
+      { name: 'Charge', type: 'charge', kind: 'aoe', damage: 50, radius: 80, cooldown: 10.0, color: 'rgba(180,240,120,0.9)', buff: { type: 'speed', multiplier: 2, durationMs: 5000 } },
+      { name: 'Rage', type: 'rage', kind: 'aoe', damage: 120, radius: 90, cooldown: 25.0, color: 'rgba(255,80,60,0.9)' }
+    ],
+    ranger: [
+      { name: 'Shot', type: 'arrow', kind: 'proj', damage: 40, radius: 6, speed: 680, cooldown: 2.0, color: 'rgba(255,215,90,0.95)' },
+      { name: 'Rapid Fire', type: 'rapid', kind: 'proj', damage: 30, radius: 5, speed: 720, cooldown: 6.0, color: 'rgba(255,200,70,0.95)' },
+      { name: 'Trap', type: 'trap', kind: 'proj', damage: 12, radius: 8, speed: 380, cooldown: 12.0, color: 'rgba(180,180,180,0.95)' },
+      { name: 'Snipe', type: 'snipe', kind: 'proj', damage: 85, radius: 7, speed: 880, cooldown: 18.0, color: 'rgba(255,240,200,0.98)' }
+    ],
+    mage: [
+      { name: 'Spark', type: 'spark', kind: 'proj', damage: 45, radius: 10, speed: 420, cooldown: 2.5, color: 'rgba(160,220,255,0.95)' },
+      { name: 'Fireball', type: 'fireball', kind: 'proj_explode', damage: 70, radius: 10, speed: 360, explodeRadius: 90, cooldown: 6.5, color: 'rgba(255,110,80,0.95)' },
+      { name: 'Frost Nova', type: 'frostnova', kind: 'aoe', damage: 60, radius: 120, cooldown: 9.0, color: 'rgba(140,220,255,0.9)' },
+      { name: 'Arcane Blast', type: 'arcane', kind: 'proj', damage: 120, radius: 12, speed: 520, cooldown: 22.0, color: 'rgba(220,150,255,0.95)' }
+    ]
+  };
+
+  // Skill icon mapping (fallback to single character or emoji)
+  const SKILL_ICONS = {
+    slash: '🗡️',
+    shieldbash: '🛡️',
+    charge: '⚡',
+    rage: '🔥',
+    arrow: '➶',
+    rapid: '🔁',
+    trap: '🪤',
+    snipe: '🎯',
+    spark: '✨',
+    fireball: '💥',
+    frostnova: '❄️',
+    arcane: '🔮'
+  };
 
   // --- Settings persistence ---
   const defaultSettings = {
@@ -257,6 +317,8 @@
     isLoading = false;
     welcomeReceived = false;
     gotFirstSnapshot = false;
+    // hide tooltip
+    skillTooltip.style.display = 'none';
   }
 
   function connectToServer() {
@@ -367,6 +429,7 @@
         const id = String(sp.id);
         seen.add(id);
         if (id === player.id) {
+          // update authoritative xp from server snapshot
           player.serverX = sp.x; player.serverY = sp.y;
           const dx = player.serverX - player.x; const dy = player.serverY - player.y;
           const dist = Math.hypot(dx, dy);
@@ -420,6 +483,8 @@
           rm.maxHp = m.maxHp || rm.maxHp;
           rm.radius = m.radius || rm.radius;
           if (rm.dead && rm.hp > 0) rm.dead = false;
+          // if server says hp <= 0, mark dead quickly to fade
+          if (rm.hp <= 0 && !rm.dead) { rm.dead = true; rm.alpha = 1.0; }
         }
       }
       // remove mobs not present
@@ -504,10 +569,64 @@
       appendChatMessage({ text: `Chat blocked: ${reason}`, ts: Date.now(), system: true });
     } else if (msg.t === 'player_levelup') {
       appendChatMessage({ text: `${msg.playerName || 'Player'} leveled up to ${msg.level}! (+${msg.hpGain} HP)`, ts: Date.now(), system: true });
+    } else if (msg.t === 'mob_died') {
+      // Show immediate death visuals and award XP locally (server authoritative).
+      const mid = msg.mobId;
+      const killerId = msg.killerId;
+      const xp = msg.xp || 0;
+      if (mid && remoteMobs.has(mid)) {
+        const rm = remoteMobs.get(mid);
+        if (rm) {
+          rm.dead = true;
+          rm.hp = 0;
+          rm.alpha = 1.0; // ensure visible so fade-out can run
+        }
+      }
+      // if we are the killer, update XP immediately and show floating XP pop
+      if (String(killerId) === String(player.id) && xp > 0) {
+        player.xp = (player.xp || 0) + xp;
+        remoteEffects.push({ type: 'xp', x: player.x, y: player.y - (player.radius + 8), color: 'rgba(180,220,255,1)', start: Date.now(), duration: 1200, text: `+${xp} XP` });
+      } else {
+        // if someone else killed it, show a small generic effect at mob location if present
+        if (mid && remoteMobs.has(mid)) {
+          const rm = remoteMobs.get(mid);
+          remoteEffects.push({ type: 'aoe', x: rm.targetX || rm.displayX, y: rm.targetY || rm.displayY, radius: 28, color: 'rgba(200,200,200,0.9)', start: Date.now(), duration: 700 });
+        }
+      }
     } else if (msg.t === 'cast_effect') {
-      // optional short system message or effect trigger - for now show system chat so players see skill usage
-      if (msg.type === 'aoe') {
-        appendChatMessage({ text: `${msg.casterName || 'Someone'} used ${msg.skill || 'an ability'}`, ts: Date.now(), system: true });
+      // Server sent an effect (aoe/melee/buff) — show visual effect
+      const skill = msg.skill || msg.type || '';
+      if (msg.type === 'melee' || msg.skill === 'slash') {
+        // short melee hit flash
+        const ef = { type: 'melee', x: msg.x || player.x, y: msg.y || player.y, radius: msg.range || 48, color: 'rgba(255,180,120,0.95)', start: Date.now(), duration: 300 };
+        remoteEffects.push(ef);
+      } else if (msg.type === 'aoe' || msg.skill) {
+        let color = 'rgba(255,255,255,0.9)';
+        if (skill === 'frostnova') color = 'rgba(140,220,255,0.9)';
+        else if (skill === 'fireball') color = 'rgba(255,110,80,0.9)';
+        else if (skill === 'rage') color = 'rgba(255,80,60,0.9)';
+        else if (skill === 'charge') color = 'rgba(180,240,120,0.9)';
+        else if (skill === 'shieldbash') color = 'rgba(200,200,255,0.9)';
+        const ef = {
+          type: 'aoe',
+          x: msg.x || 0,
+          y: msg.y || 0,
+          radius: msg.radius || (msg.explodeRadius || 60),
+          color,
+          start: Date.now(),
+          duration: 900 // ms default
+        };
+        if (skill === 'frostnova') ef.duration = 1100;
+        if (skill === 'rage') ef.duration = 1200;
+        if (skill === 'charge') ef.duration = 900;
+        remoteEffects.push(ef);
+
+        // if there's a buff payload (e.g., charge), and it's for us, apply local buff
+        if (msg.buff && player.id && String(msg.casterId) === String(player.id)) {
+          const b = msg.buff;
+          player.localBuffs = player.localBuffs || [];
+          player.localBuffs.push({ type: b.type, multiplier: b.multiplier || 1, until: Date.now() + (b.durationMs || 0) });
+        }
       }
     }
   }
@@ -542,7 +661,29 @@
         ws.send(JSON.stringify({ t: 'cast', slot: slotIndex + 1, class: player.class, ts: Date.now(), angle: aimAngle }));
       }
     } catch (e) {}
-    appendChatMessage({ text: `${player.name || 'You'} used ${CLASS_SKILLS[player.class][slotIndex]} (slot ${slotIndex+1})`, ts: Date.now(), system: true });
+
+    // local visual feedback & optimistic buff for immediate response
+    const meta = (SKILL_META[player.class] && SKILL_META[player.class][slotIndex]) || null;
+    if (meta) {
+      // push a local effect at player position for immediate feedback
+      remoteEffects.push({
+        type: meta.kind === 'melee' ? 'melee' : 'aoe',
+        x: player.x,
+        y: player.y,
+        radius: meta.radius || (meta.range || (meta.explodeRadius || 48)),
+        color: meta.color || 'rgba(255,255,255,0.9)',
+        start: Date.now(),
+        duration: meta.kind === 'melee' ? 300 : 800
+      });
+
+      // if this is Charge, apply local buff immediately (server authoritative will confirm)
+      if (meta.type === 'charge' && meta.buff) {
+        player.localBuffs.push({ type: meta.buff.type, multiplier: meta.buff.multiplier || 1.0, until: Date.now() + (meta.buff.durationMs || 0) });
+      }
+    }
+
+    // removed the chat message for skill usage (per request)
+
     return true;
   }
 
@@ -574,6 +715,19 @@
     pointer.x = e.clientX; pointer.y = e.clientY;
     mouseWorld.x = player.x + (pointer.x - vw / 2);
     mouseWorld.y = player.y + (pointer.y - vh / 2);
+
+    // detect hotbar hover and show tooltip
+    const hovered = getHotbarSlotUnderPointer(e.clientX, e.clientY, vw, vh);
+    if (hovered !== null) {
+      const meta = (SKILL_META[player.class] && SKILL_META[player.class][hovered]) || null;
+      if (meta) {
+        showSkillTooltip(meta, e.clientX + 12, e.clientY + 12);
+      } else {
+        hideSkillTooltip();
+      }
+    } else {
+      hideSkillTooltip();
+    }
   });
 
   // hotbar click handling (screen coords) — returns true if handled
@@ -592,6 +746,20 @@
       }
     }
     return false;
+  }
+
+  function getHotbarSlotUnderPointer(clientX, clientY, vw, vh) {
+    const slotSize = 64;
+    const gap = 10;
+    const totalW = HOTBAR_SLOTS * slotSize + (HOTBAR_SLOTS - 1) * gap;
+    const x0 = Math.round((vw - totalW) / 2);
+    const y0 = Math.round(vh - 28 - slotSize);
+    if (clientY < y0 || clientY > y0 + slotSize) return null;
+    for (let i = 0; i < HOTBAR_SLOTS; i++) {
+      const sx = x0 + i * (slotSize + gap);
+      if (clientX >= sx && clientX <= sx + slotSize) return i;
+    }
+    return null;
   }
 
   canvas.addEventListener('click', (e) => {
@@ -696,12 +864,80 @@
     });
   });
 
-  // --- Drawing helpers: XP bar & Hotbar ---
-  function drawXpBar(vw, vh) {
+  // --- Skill tooltip helpers ---
+  function showSkillTooltip(meta, x, y) {
+    const lines = [];
+    lines.push(`<div class="tooltipTitle">${escapeHtml(meta.name)}</div>`);
+    if (meta.kind === 'melee' && typeof meta.range === 'number') lines.push(`<div class="tooltipRow"><strong>Range:</strong> ${meta.range}</div>`);
+    else if (typeof meta.radius === 'number') lines.push(`<div class="tooltipRow"><strong>Radius:</strong> ${meta.radius}</div>`);
+    if (typeof meta.damage === 'number') lines.push(`<div class="tooltipRow"><strong>Damage:</strong> ${meta.damage}</div>`);
+    if (typeof meta.explodeRadius === 'number') lines.push(`<div class="tooltipRow"><strong>Explode Radius:</strong> ${meta.explodeRadius}</div>`);
+    if (typeof meta.speed === 'number') lines.push(`<div class="tooltipRow"><strong>Projectile speed:</strong> ${meta.speed}</div>`);
+    if (typeof meta.cooldown === 'number') lines.push(`<div class="tooltipRow"><strong>Cooldown:</strong> ${meta.cooldown}s</div>`);
+    if (meta.buff) {
+      if (meta.buff.type === 'speed') {
+        lines.push(`<div class="tooltipRow"><strong>Buff:</strong> Speed x${meta.buff.multiplier} for ${Math.round((meta.buff.durationMs||0)/1000)}s</div>`);
+      } else {
+        lines.push(`<div class="tooltipRow"><strong>Buff:</strong> ${escapeHtml(JSON.stringify(meta.buff))}</div>`);
+      }
+    }
+    skillTooltip.innerHTML = lines.join('');
+    skillTooltip.style.left = `${Math.min(window.innerWidth - 220, x)}px`;
+    skillTooltip.style.top = `${Math.min(window.innerHeight - 120, y)}px`;
+    skillTooltip.style.display = 'block';
+  }
+  function hideSkillTooltip() {
+    skillTooltip.style.display = 'none';
+  }
+  function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // --- Drawing helpers: HP/XP placement (user requested layout) & Hotbar (with icons) ---
+  function drawPlayerHpAboveHotbar(vw, vh) {
+    // Hotbar baseline positions (used by drawHotbar). We compute here to align HP/Xp.
+    const slotSize = 64;
+    const gap = 10;
+    const totalW = HOTBAR_SLOTS * slotSize + (HOTBAR_SLOTS - 1) * gap;
+    const x0 = Math.round((vw - totalW) / 2);
+    const hotbarY = Math.round(vh - 28 - slotSize);
+
+    // HP / XP bar width same as XP counter desire: choose min(520, 60% vw) (same as previous XP bar)
     const barW = Math.min(520, Math.floor(vw * 0.6));
     const barH = 14;
-    const x = Math.round((vw - barW) / 2);
-    const y = Math.round(vh - 28 - 64 - 10 - barH);
+    const barX = Math.round((vw - barW) / 2);
+
+    // HP goes ABOVE hotbar (directly above)
+    const hpY = hotbarY - 10 - barH;
+    drawHpBarAt(barX, hpY, barW, barH);
+
+    // Effects (active buffs) to the RIGHT of the HP bar (above hotbar). We'll render small icons stacked vertically starting at right edge.
+    drawActiveEffectsAt(barX + barW + 10, hpY, barH);
+
+    // XP goes BELOW hotbar
+    const xpY = hotbarY + slotSize + 8;
+    drawXpBarAt(barX, xpY, barW, barH);
+  }
+
+  function drawHpBarAt(x, y, barW, barH) {
+    const padding = 3;
+    const currentHp = Math.max(0, Math.round(player.hp || 0));
+    const maxHp = Math.max(1, Math.round(player.maxHp || 200));
+    const pct = Math.max(0, Math.min(1, currentHp / maxHp));
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    roundRectScreen(ctx, x - 2, y - 2, barW + 4, barH + 4, 6, true, false);
+    ctx.fillStyle = '#222';
+    roundRectScreen(ctx, x, y, barW, barH, 6, true, false);
+    ctx.fillStyle = '#e74c3c';
+    roundRectScreen(ctx, x + padding, y + padding, Math.max(6, (barW - padding*2) * pct), barH - padding*2, 6, true, false);
+    ctx.font = '12px system-ui, Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+    const txt = `HP ${currentHp} / ${maxHp}`;
+    ctx.fillText(txt, x + barW / 2, y + barH / 2);
+    ctx.restore();
+  }
+
+  function drawXpBarAt(x, y, barW, barH) {
     const padding = 3;
     const nextNeeded = Math.max(50, player.level * 100);
     const pct = nextNeeded > 0 ? Math.min(1, (player.xp || 0) / nextNeeded) : 0;
@@ -720,6 +956,37 @@
     ctx.restore();
   }
 
+  function drawActiveEffectsAt(startX, startY, iconSize) {
+    // Draw local buffs (player.localBuffs) as icons with timer to the right of HP bar
+    const now = Date.now();
+    const effects = (player.localBuffs || []).filter(b => b.until > now);
+    if (!effects.length) return;
+    const iconW = Math.max(22, iconSize);
+    const gap = 6;
+    ctx.save();
+    ctx.font = '12px system-ui, Arial';
+    for (let i = 0; i < effects.length; i++) {
+      const e = effects[i];
+      const ix = startX;
+      const iy = startY + i * (iconW + gap);
+      // background circle
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = e.type === 'speed' ? 'rgba(255,220,120,0.95)' : 'rgba(200,200,200,0.95)';
+      roundRectScreen(ctx, ix, iy, iconW, iconW, 6, true, false);
+      // icon glyph
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#111';
+      const glyph = e.type === 'speed' ? '⚡' : '●';
+      ctx.fillText(glyph, ix + iconW / 2, iy + iconW / 2 + 1);
+      // timer overlay
+      const remaining = Math.max(0, Math.round((e.until - now) / 1000));
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.font = '11px system-ui, Arial';
+      ctx.fillText(`${remaining}s`, ix + iconW / 2, iy + iconW - 8);
+    }
+    ctx.restore();
+  }
+
   function drawHotbar(vw, vh) {
     const slotSize = 64;
     const gap = 10;
@@ -735,12 +1002,31 @@
       const sy = y0;
       ctx.fillStyle = 'rgba(40,40,42,0.95)';
       roundRectScreen(ctx, sx, sy, slotSize, slotSize, 8, true, false);
-      const skillName = (CLASS_SKILLS[player.class] && CLASS_SKILLS[player.class][i]) || `Skill ${i+1}`;
-      ctx.font = '12px system-ui, Arial';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = '#fff';
-      ctx.fillText(skillName, sx + slotSize/2, sy + 6);
-      ctx.font = '11px system-ui, Arial'; ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.fillText(`${i+1}`, sx + 6, sy + slotSize - 18);
+
+      // highlight hovered slot
+      const hovered = getHotbarSlotUnderPointer(pointer.x, pointer.y, vw, vh);
+      if (hovered === i) {
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        roundRectScreen(ctx, sx, sy, slotSize, slotSize, 8, false, true);
+      }
+
+      // draw icon background using skill color and icon glyph
+      const meta = (SKILL_META[player.class] && SKILL_META[player.class][i]) || null;
+      if (meta) {
+        ctx.fillStyle = meta.color || 'rgba(255,255,255,0.06)';
+        roundRectScreen(ctx, sx + 8, sy + 8, slotSize - 16, slotSize - 16, 6, true, false);
+        const glyph = SKILL_ICONS[meta.type] || meta.name.charAt(0);
+        ctx.font = '22px system-ui, Arial';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#111';
+        ctx.fillText(glyph, sx + slotSize/2, sy + slotSize/2 + 2);
+      } else {
+        ctx.font = '12px system-ui, Arial';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+        ctx.fillText(`Slot ${i+1}`, sx + slotSize/2, sy + slotSize/2);
+      }
+
       const cd = cooldowns[i] || 0;
       if (cd > 0) {
         const cdPct = Math.min(1, cd / ((CLASS_COOLDOWNS[player.class] && CLASS_COOLDOWNS[player.class][i]) || 6.0));
@@ -878,26 +1164,45 @@
     }
     ctx.restore();
 
-    // draw projectiles (interpolated)
+    // draw projectiles (interpolated) with improved visuals
     ctx.save();
     for (const pr of remoteProjectiles.values()) {
       const interpFactor = 1 - Math.exp(-REMOTE_INTERP_SPEED * dt);
       pr.displayX += (pr.targetX - pr.displayX) * interpFactor;
       pr.displayY += (pr.targetY - pr.displayY) * interpFactor;
-      ctx.beginPath();
-      // color based on type
+
+      // trail & glow vary by type
       let col = '#ff9f4d';
       if (pr.type === 'arrow') col = '#ffd54a';
       else if (pr.type === 'fireball') col = '#ff6b6b';
       else if (pr.type === 'frost') col = '#8fe3ff';
-      ctx.fillStyle = col;
+      else if (pr.type === 'spark') col = 'rgba(160,220,255,0.95)';
+      else if (pr.type === 'arcane') col = 'rgba(220,150,255,0.95)';
+
+      // trail
+      ctx.globalAlpha = pr.alpha != null ? Math.max(0.2, pr.alpha * 0.9) : 0.8;
+      const trailLen = Math.max(6, (Math.hypot(pr.vx||0, pr.vy||0) * 0.02));
+      const tx = pr.displayX - (pr.vx||0) * 0.02;
+      const ty = pr.displayY - (pr.vy||0) * 0.02;
+      const grad = ctx.createRadialGradient(pr.displayX, pr.displayY, 1, pr.displayX, pr.displayY, Math.max(8, pr.radius*3));
+      grad.addColorStop(0, col);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(pr.displayX, pr.displayY, Math.max(3, pr.radius || 6) * 1.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // core projectile
       ctx.globalAlpha = pr.alpha != null ? pr.alpha : 1.0;
+      ctx.beginPath();
+      ctx.fillStyle = col;
       ctx.arc(pr.displayX, pr.displayY, Math.max(3, pr.radius || 6), 0, Math.PI * 2);
       ctx.fill();
-      // slight trail
-      ctx.globalAlpha = 0.5 * (pr.alpha != null ? pr.alpha : 1.0);
+
+      // slight trailing ghost
+      ctx.globalAlpha = 0.45 * (pr.alpha != null ? pr.alpha : 1.0);
       ctx.beginPath();
-      ctx.arc(pr.displayX - (pr.vx||0)*0.02, pr.displayY - (pr.vy||0)*0.02, Math.max(2, (pr.radius||6)*0.8), 0, Math.PI*2);
+      ctx.arc(tx, ty, Math.max(2, (pr.radius||6)*0.9), 0, Math.PI*2);
       ctx.fill();
       ctx.globalAlpha = 1.0;
     }
@@ -945,6 +1250,41 @@
         roundRectScreen(ctx, bx, by, Math.max(2, barW * pct), barH, 3, true, false);
         ctx.globalAlpha = 1.0;
       }
+    }
+    ctx.restore();
+
+    // draw remote AoE/effects
+    ctx.save();
+    const now = Date.now();
+    for (let i = remoteEffects.length - 1; i >= 0; i--) {
+      const ef = remoteEffects[i];
+      const elapsed = now - ef.start;
+      const t = Math.max(0, Math.min(1, elapsed / ef.duration));
+      const alpha = Math.max(0, 1 - t);
+      const expand = 1 + t * 0.25;
+      if (ef.type === 'xp') {
+        // floating text
+        ctx.globalAlpha = alpha;
+        ctx.font = '18px system-ui, Arial';
+        ctx.fillStyle = ef.color || '#fff';
+        ctx.textAlign = 'center';
+        ctx.fillText(ef.text || '+XP', ef.x, ef.y - elapsed * 0.03);
+      } else {
+        ctx.globalAlpha = 0.9 * alpha;
+        ctx.beginPath();
+        ctx.lineWidth = 12 * (1 - t) + 4;
+        ctx.strokeStyle = ef.color || 'rgba(255,255,255,0.9)';
+        ctx.arc(ef.x, ef.y, (ef.radius || 40) * expand, 0, Math.PI * 2);
+        ctx.stroke();
+        // inner fade fill
+        ctx.globalAlpha = 0.12 * alpha;
+        ctx.fillStyle = ef.color || 'rgba(255,255,255,0.6)';
+        ctx.beginPath();
+        ctx.arc(ef.x, ef.y, (ef.radius || 40) * (0.9 * expand), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (elapsed >= ef.duration) remoteEffects.splice(i, 1);
     }
     ctx.restore();
   }
@@ -1140,8 +1480,12 @@
     const titleVisible = titleScreen && titleScreen.style.display !== 'none';
     const settingsOpen = settingsPanel && settingsPanel.getAttribute('aria-hidden') === 'false';
     const inputVec = (!titleVisible && !settingsOpen) ? computeInputVector() : { x: 0, y: 0 };
-    const targetVx = inputVec.x * player.speed;
-    const targetVy = inputVec.y * player.speed;
+
+    // compute client-side speed (considers local buffs)
+    const clientSpeed = currentClientSpeed();
+
+    const targetVx = inputVec.x * clientSpeed;
+    const targetVy = inputVec.y * clientSpeed;
     const velLerp = 1 - Math.exp(-MOVE_ACCEL * dt);
     player.vx += (targetVx - player.vx) * velLerp;
     player.vy += (targetVy - player.vy) * velLerp;
@@ -1177,12 +1521,16 @@
     const playerScreenY = vh / 2;
     const angle = player.facing;
     if (!titleVisible) drawPlayerScreen(playerScreenX, playerScreenY, angle);
+
+    // Draw HUD: hotbar centered bottom; HP above hotbar; effects to right of HP; XP under hotbar
+    if (!titleVisible) {
+      drawHotbar(vw, vh);
+      drawPlayerHpAboveHotbar(vw, vh);
+    }
+
     if (!titleVisible) {
       if (settings.showCoordinates) drawCoordinatesBottomRight();
       drawMinimap();
-      // draw XP bar & hotbar
-      drawXpBar(vw, vh);
-      drawHotbar(vw, vh);
     }
     requestAnimationFrame(loop);
   }

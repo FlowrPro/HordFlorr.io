@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Moborr.io</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <canvas id="game" tabindex="0"></canvas>
+
+  <!-- Title / login screen -->
+  <div id="titleScreen" aria-hidden="false">
+    <h1>Moborr.io</h1>
+
+    <div id="loginBox" role="dialog" aria-label="Login">
+      <input id="username" type="text" placeholder="Enter a display name" maxlength="24" />
+      <button id="playButton" type="button">Play</button>
+    </div>
+
+    <!-- Class selection: choose one of three starter classes -->
+    <div id="classSelection" class="classSelection" aria-label="Choose your class">
+      <label class="classOption">
+        <input type="radio" name="class" value="warrior" checked />
+        <div class="classCard">
+          <div class="classTitle">Warrior</div>
+          <div class="classDesc">Tanky melee. High HP.</div>
+        </div>
+      </label>
+      <label class="classOption">
+        <input type="radio" name="class" value="ranger" />
+        <div class="classCard">
+          <div class="classTitle">Ranger</div>
+          <div class="classDesc">Ranged single-target.</div>
+        </div>
+      </label>
+      <label class="classOption">
+        <input type="radio" name="class" value="mage" />
+        <div class="classCard">
+          <div class="classTitle">Mage</div>
+          <div class="classDesc">AoE caster. Lower HP.</div>
+        </div>
+      </label>
+    </div>
+
+    <div class="titleHint">Use keyboard, mouse or click-to-move (toggle in settings)</div>
+  </div>
+
+  <!-- Loading screen -->
+  <div id="loadingScreen" aria-hidden="true" role="status" aria-live="polite">
+    <div class="loadingBox">
+      <div id="loadingPlayer" class="loadingPlayer" aria-hidden="true">
+        <div class="eye left"><div class="pupil"></div></div>
+        <div class="eye right"><div class="pupil"></div></div>
+      </div>
+      <div id="loadingText" class="loadingText">Loading…</div>
+      <div id="loadingSub" class="loadingSub">Preparing the world</div>
+      <div id="loadingPlayerName" class="loadingPlayerName"></div>
+    </div>
+  </div>
+
+  <!-- Chat panel (non-persistent) -->
+  <div id="chatPanel" aria-live="polite" aria-atomic="false">
+    <div id="chatLog" role="log" aria-relevant="additions"></div>
+    <div id="chatForm" role="form">
+      <input id="chatInput" type="text" placeholder="Say something..." maxlength="240" />
+      <button id="chatSend" type="button" aria-label="Send">➤</button>
+    </div>
+  </div>
+
+  <!-- Settings button -->
+  <button id="settingsBtn" aria-expanded="false" title="Settings">⚙</button>
+
+  <!-- Settings panel -->
+  <div id="settingsPanel" aria-hidden="true">
+    <div class="settingsHeader">
+      <div class="settingsTitle">Settings</div>
+      <button id="settingsClose" class="closeBtn" title="Close">✕</button>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Settings Tabs">
+      <button class="tabButton active" data-tab="controls" role="tab" aria-selected="true">Controls</button>
+      <button class="tabButton" data-tab="game" role="tab" aria-selected="false">Game</button>
+      <button class="tabButton" data-tab="graphics" role="tab" aria-selected="false">Graphics</button>
+    </div>
+
+    <div class="tabContents">
+      <div class="tabContent" data-name="controls">
+        <div class="settingRow">
+          <input id="keyboardMovement" type="checkbox" />
+          <label for="keyboardMovement">Keyboard movement (WASD / Arrows)</label>
+        </div>
+        <div class="settingRow">
+          <input id="mouseMovement" type="checkbox" />
+          <label for="mouseMovement">Mouse movement (face cursor)</label>
+        </div>
+        <div class="settingRow">
+          <input id="clickMovement" type="checkbox" />
+          <label for="clickMovement">Click-to-move</label>
+        </div>
+      </div>
+
+      <div class="tabContent hidden" data-name="game">
+        <div class="settingRow">
+          <input id="showCoordinates" type="checkbox" />
+          <label for="showCoordinates">Show coordinates</label>
+        </div>
+        <div class="settingRow">
+          <small style="color:#444">Gameplay options (more to come)</small>
+        </div>
+      </div>
+
+      <div class="tabContent hidden" data-name="graphics">
+        <div class="settingRow">
+          <label for="graphicsQuality">Graphics quality</label>
+          <select id="graphicsQuality">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="settingRow">
+          <small style="color:#444">Adjust details to improve performance on slower devices.</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

@@ -2,12 +2,7 @@
 // Logic kept intact from original main.js but moved into dom.js to centralize DOM manipulation.
 
 import { state } from './state.js';
-import { escapeHtml } from './dom_helpers_internal.js'; // a tiny internal helper below
 
-// We put a very small local helper file content below (since we can't have circular import).
-// The file dom_helpers_internal.js content is included inline here to keep everything together in one file
-// (in your filesystem you may split it to a separate module if you prefer).
-// For clarity in this split, escapeHtml is implemented here:
 
 export function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 

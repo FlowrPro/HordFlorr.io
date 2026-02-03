@@ -151,6 +151,9 @@ export function handleServerMessage(msg) {
         state.player.name = sp.name || state.player.name;
         if (typeof sp.level === 'number') state.player.level = sp.level;
         if (typeof sp.xp === 'number') state.player.xp = sp.xp;
+        // Ensure local HP is updated from snapshot so UI can show correct values
+        if (typeof sp.hp === 'number') state.player.hp = sp.hp;
+        if (typeof sp.maxHp === 'number') state.player.maxHp = sp.maxHp;
       } else {
         let rp = state.remotePlayers.get(id);
         if (!rp) {
@@ -366,6 +369,8 @@ export function handleServerMessage(msg) {
   } else if (msg.t === 'player_hurt') {
     // optional: show flashing effect when we are hit
     if (String(msg.id) === String(state.player.id)) {
+      // Update local hp immediately if provided in the message so the HP bar reflects damage faster
+      if (typeof msg.hp === 'number') state.player.hp = msg.hp;
       state.remoteEffects.push({ type: 'aoe', x: state.player.x, y: state.player.y, radius: 24, color: 'rgba(255,80,80,0.9)', start: Date.now(), duration: 350 });
     }
   } else if (msg.t === 'cast_rejected') {

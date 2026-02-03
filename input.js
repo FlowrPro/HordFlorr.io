@@ -288,7 +288,7 @@ export function castSkill(slotIndex) {
     if (meta.type === 'charge' && meta.buff) {
       state.player.localBuffs.push({ type: meta.buff.type, multiplier: meta.buff.multiplier || 1.0, until: Date.now() + (meta.buff.durationMs || 0) });
     }
-    if (meta.type === 'rage' and meta.buff) {
+    if (meta.type === 'rage' && meta.buff) {
       state.player.localBuffs.push({ type: meta.buff.type, multiplier: meta.buff.multiplier || 1.0, until: Date.now() + (meta.buff.durationMs || 0) });
     }
   }

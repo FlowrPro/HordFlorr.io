@@ -151,8 +151,25 @@ export function handleServerMessage(msg) {
         state.player.name = sp.name || state.player.name;
         if (typeof sp.level === 'number') state.player.level = sp.level;
         if (typeof sp.xp === 'number') state.player.xp = sp.xp;
+
         // Ensure local HP is updated from snapshot so UI can show correct values
-        if (typeof sp.hp === 'number') state.player.hp = sp.hp;
+        if (typeof sp.hp === 'number') {
+          const prevHp = Number.isFinite(state.player.hp) ? state.player.hp : 0;
+          const newHp = sp.hp;
+          if (newHp > prevHp) {
+            // show heal UI
+            state.remoteEffects.push({
+              type: 'heal',
+              x: state.player.x,
+              y: state.player.y - (state.player.radius + 12),
+              color: 'rgba(120,255,140,0.95)',
+              text: `+${newHp - prevHp} HP`,
+              start: Date.now(),
+              duration: 1200
+            });
+          }
+          state.player.hp = newHp;
+        }
         if (typeof sp.maxHp === 'number') state.player.maxHp = sp.maxHp;
       } else {
         let rp = state.remotePlayers.get(id);
@@ -370,8 +387,28 @@ export function handleServerMessage(msg) {
     // optional: show flashing effect when we are hit
     if (String(msg.id) === String(state.player.id)) {
       // Update local hp immediately if provided in the message so the HP bar reflects damage faster
-      if (typeof msg.hp === 'number') state.player.hp = msg.hp;
-      state.remoteEffects.push({ type: 'aoe', x: state.player.x, y: state.player.y, radius: 24, color: 'rgba(255,80,80,0.9)', start: Date.now(), duration: 350 });
+      if (typeof msg.hp === 'number') {
+        const prev = Number.isFinite(state.player.hp) ? state.player.hp : 0;
+        const newHp = msg.hp;
+        if (newHp > prev) {
+          // heal
+          state.remoteEffects.push({
+            type: 'heal',
+            x: state.player.x,
+            y: state.player.y - (state.player.radius + 12),
+            color: 'rgba(120,255,140,0.95)',
+            text: `+${newHp - prev} HP`,
+            start: Date.now(),
+            duration: 1200
+          });
+        } else if (newHp < prev) {
+          // damage flash (reuse aoe red)
+          state.remoteEffects.push({ type: 'aoe', x: state.player.x, y: state.player.y, radius: 24, color: 'rgba(255,80,80,0.9)', start: Date.now(), duration: 350 });
+        }
+        state.player.hp = newHp;
+      } else {
+        state.remoteEffects.push({ type: 'aoe', x: state.player.x, y: state.player.y, radius: 24, color: 'rgba(255,80,80,0.9)', start: Date.now(), duration: 350 });
+      }
     }
   } else if (msg.t === 'cast_rejected') {
     // server rejected a cast (cooldown, no_target, etc)
@@ -383,7 +420,7 @@ export function handleServerMessage(msg) {
 export function sendChat() {
   if (!state.dom.chatInput || !state.dom.chatInput.value) return;
   const txt = state.dom.chatInput.value.trim();
-  if (!txt) { state.dom.unfocusChat(); return; }
+  if (!txt) { dom.unfocusChat(); return; }
   const chatId = `${Date.now()}-${Math.random().toString(36).slice(2,9)}`;
   const ts = Date.now();
   appendChatMessage({ name: state.player.name || 'You', text: txt, ts, chatId, local: true });
@@ -397,7 +434,7 @@ export function sendChat() {
   }
   state.dom.chatInput.value = '';
   // unfocus after sending (as requested)
-  state.dom.unfocusChat();
+  dom.unfocusChat();
 }
 
 // Expose a function to set the interval externally (used by main wiring)

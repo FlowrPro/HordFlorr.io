@@ -368,6 +368,54 @@ function drawWorld(vw, vh, dt) {
       dom.ctx.font = '14px system-ui, Arial'; dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'bottom'; dom.ctx.fillStyle = 'rgba(255,255,255,0.95)'; dom.ctx.fillText('❌', rm.displayX, rm.displayY - rm.radius - 12);
     }
   }
+
+  // draw any remoteEffects that are world-space (aoe, xp, heal, melee)
+  const now = Date.now();
+  for (let i = state.remoteEffects.length - 1; i >= 0; i--) {
+    const ef = state.remoteEffects[i];
+    const age = now - (ef.start || 0);
+    if (!ef || !ef.duration || age >= ef.duration) { state.remoteEffects.splice(i, 1); continue; }
+    const t = Math.max(0, Math.min(1, age / ef.duration));
+    dom.ctx.save();
+    if (ef.type === 'aoe') {
+      const r = (ef.radius || 40) * (0.9 + 0.4 * (1 - t));
+      dom.ctx.beginPath();
+      dom.ctx.lineWidth = Math.max(2, 4 * (1 - t));
+      dom.ctx.strokeStyle = ef.color || `rgba(255,255,255,${1 - t})`;
+      dom.ctx.arc(ef.x || 0, ef.y || 0, r, 0, Math.PI * 2);
+      dom.ctx.stroke();
+    } else if (ef.type === 'xp') {
+      const sy = (ef.y || 0) - t * 40;
+      dom.ctx.globalAlpha = 1 - t;
+      dom.ctx.font = '14px system-ui, Arial';
+      dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'middle';
+      dom.ctx.fillStyle = ef.color || 'rgba(180,220,255,1)';
+      dom.ctx.fillText(ef.text || '+XP', ef.x || 0, sy);
+    } else if (ef.type === 'heal') {
+      const syh = (ef.y || 0) - t * 36;
+      dom.ctx.globalAlpha = 1 - t;
+      dom.ctx.font = '14px system-ui, Arial';
+      dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'middle';
+      dom.ctx.fillStyle = ef.color || 'rgba(120,255,140,0.95)';
+      dom.ctx.fillText(ef.text || '+HP', ef.x || 0, syh);
+    } else if (ef.type === 'melee') {
+      const r = (ef.radius || 40) * (0.6 + 0.8 * (1 - t));
+      dom.ctx.globalAlpha = 1 - t;
+      dom.ctx.beginPath();
+      dom.ctx.fillStyle = ef.color || 'rgba(255,200,120,0.9)';
+      dom.ctx.arc(ef.x || 0, ef.y || 0, r, 0, Math.PI * 2);
+      dom.ctx.fill();
+    } else {
+      // generic fallback: small dot
+      dom.ctx.globalAlpha = 1 - t;
+      dom.ctx.fillStyle = ef.color || 'rgba(255,255,255,0.9)';
+      dom.ctx.beginPath();
+      dom.ctx.arc(ef.x || 0, ef.y || 0, 4 + 6 * (1 - t), 0, Math.PI * 2);
+      dom.ctx.fill();
+    }
+    dom.ctx.restore();
+  }
+
   dom.ctx.restore();
 }
 

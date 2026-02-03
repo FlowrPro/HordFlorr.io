@@ -70,6 +70,32 @@ input.initInputHandlers();
 // Start the render loop
 render.startLoop();
 
+// Periodic healing: heals 10% of max HP every 10 seconds (client-side visual + local hp increase).
+// NOTE: Server is authoritative; server snapshots may overwrite this value. This provides local healing and a visible UI effect.
+if (!state.healInterval) {
+  state.healInterval = setInterval(() => {
+    if (state.isLoading) return;
+    if (!state.player) return;
+    if (state.player.hp <= 0) return; // don't heal when dead
+    const maxHp = Math.max(1, Number(state.player.maxHp || 200));
+    const prevHp = Number(state.player.hp || 0);
+    const healAmount = Math.max(1, Math.floor(maxHp * 0.10)); // 10% of max HP
+    const newHp = Math.min(maxHp, prevHp + healAmount);
+    if (newHp > prevHp) {
+      state.player.hp = newHp;
+      state.remoteEffects.push({
+        type: 'heal',
+        x: state.player.x,
+        y: state.player.y - (state.player.radius + 12),
+        color: 'rgba(120,255,140,0.95)',
+        text: `+${newHp - prevHp} HP`,
+        start: Date.now(),
+        duration: 1200
+      });
+    }
+  }, 10000);
+}
+
 // Expose for debugging and compatibility with existing code
 window.moborr = {
   startGame,

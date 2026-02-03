@@ -26,6 +26,9 @@ export const state = (function(){
     class: 'warrior',      // default chosen class until user picks one
     level: 1,
     xp: 0,
+    // New: default HP values to ensure UI shows sensible numbers prior to first snapshot
+    maxHp: 200,
+    hp: 200,
     serverX: null,
     serverY: null,
     localBuffs: [],        // optimistic visual buffs: {type, until, multiplier}

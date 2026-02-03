@@ -5,6 +5,17 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Moborr.io</title>
   <link rel="stylesheet" href="style.css" />
+
+  <!-- Import map to resolve bare imports like "three" and "three/examples/..." in the browser.
+       This allows loading Three.js and example modules from the CDN without npm/bundling. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.154.0/build/three.module.js",
+      "three/": "https://unpkg.com/three@0.154.0/"
+    }
+  }
+  </script>
 </head>
 <body>
   <!-- WebGL canvas (3D scene) -->

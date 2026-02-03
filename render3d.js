@@ -1,7 +1,7 @@
-// 3D renderer using Three.js (CDN import). Uses existing <canvas id="game"> for WebGL
+// 3D renderer using Three.js (loaded via import map). Uses existing <canvas id="game"> for WebGL
 // and the HUD <canvas id="hud"> (available as dom.ctx) for overlay drawing.
 //
-// - No npm required: Three.js is loaded as an ES module from unpkg CDN.
+// - No npm required: Three.js is loaded from the CDN via an import map in index.html.
 // - Provides basic camera (orbit-like) controls, ground plane hit-testing (raycast -> screenToWorld),
 //   and simple mesh syncing for players, mobs, projectiles, and walls.
 //
@@ -12,9 +12,9 @@
 import { state } from './state.js';
 import dom from './dom.js';
 
-// Import Three.js from CDN (ES module build)
-import * as THREE from 'https://unpkg.com/three@0.154.0/build/three.module.js';
-import { OrbitControls } from 'https://unpkg.com/three@0.154.0/examples/jsm/controls/OrbitControls.js';
+// Use bare imports; the browser will resolve them through the import map in index.html
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 let renderer = null;
 let scene = null;

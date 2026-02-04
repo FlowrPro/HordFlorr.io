@@ -470,7 +470,115 @@ gearPanel.appendChild(statsBox);
 
 // append to body but keep hidden
 document.body.appendChild(gearPanel);
+// --- make the gear panel draggable (mouse + touch) and persist position ---
+(function makeGearPanelDraggable() {
+  if (!gearPanel) return;
 
+  const STORAGE_KEY = 'moborr_gear_panel_pos';
+
+  // Restore saved position (if any)
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const pos = JSON.parse(raw);
+      if (typeof pos.left === 'number' && typeof pos.top === 'number') {
+        // clear right property if set and apply left/top
+        gearPanel.style.right = '';
+        gearPanel.style.left = pos.left + 'px';
+        gearPanel.style.top = pos.top + 'px';
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  let dragging = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+
+  // Use the title row as the drag handle so clicking content won't start a drag
+  const dragHandle = gearTitleRow || gearPanel; // fallback to whole panel if title row missing
+  dragHandle.style.cursor = 'grab'; // visual affordance
+
+  function clampPosition(left, top, panelW, panelH) {
+    const vw = Math.max(200, window.innerWidth);
+    const vh = Math.max(200, window.innerHeight);
+    const minLeft = 8;
+    const minTop = 8;
+    const maxLeft = Math.max(minLeft, vw - panelW - 8);
+    const maxTop = Math.max(minTop, vh - panelH - 8);
+    return {
+      left: Math.min(maxLeft, Math.max(minLeft, left)),
+      top: Math.min(maxTop, Math.max(minTop, top))
+    };
+  }
+
+  function startDrag(clientX, clientY) {
+    const rect = gearPanel.getBoundingClientRect();
+    dragOffsetX = clientX - rect.left;
+    dragOffsetY = clientY - rect.top;
+    dragging = true;
+    // ensure left/top are set so we can move by modifying them
+    gearPanel.style.right = '';
+    gearPanel.style.left = rect.left + 'px';
+    gearPanel.style.top = rect.top + 'px';
+    // disable selection while dragging
+    document.body.style.userSelect = 'none';
+    dragHandle.style.cursor = 'grabbing';
+  }
+
+  function moveDrag(clientX, clientY) {
+    if (!dragging) return;
+    const panelW = gearPanel.offsetWidth;
+    const panelH = gearPanel.offsetHeight;
+    let left = clientX - dragOffsetX;
+    let top = clientY - dragOffsetY;
+    const clamped = clampPosition(left, top, panelW, panelH);
+    gearPanel.style.left = clamped.left + 'px';
+    gearPanel.style.top = clamped.top + 'px';
+  }
+
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    // restore selection behavior
+    document.body.style.userSelect = '';
+    dragHandle.style.cursor = 'grab';
+    // persist position
+    try {
+      const rect = gearPanel.getBoundingClientRect();
+      const pos = { left: Math.round(rect.left), top: Math.round(rect.top) };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
+    } catch (e) {}
+  }
+
+  // Mouse events
+  dragHandle.addEventListener('mousedown', (ev) => {
+    // only left button
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    startDrag(ev.clientX, ev.clientY);
+  });
+  window.addEventListener('mousemove', (ev) => {
+    if (!dragging) return;
+    ev.preventDefault();
+    moveDrag(ev.clientX, ev.clientY);
+  });
+  window.addEventListener('mouseup', () => { endDrag(); });
+
+  // Touch events
+  dragHandle.addEventListener('touchstart', (ev) => {
+    if (!ev.touches || !ev.touches[0]) return;
+    const t = ev.touches[0];
+    ev.preventDefault();
+    startDrag(t.clientX, t.clientY);
+  }, { passive: false });
+  window.addEventListener('touchmove', (ev) => {
+    if (!dragging || !ev.touches || !ev.touches[0]) return;
+    const t = ev.touches[0];
+    ev.preventDefault();
+    moveDrag(t.clientX, t.clientY);
+  }, { passive: false });
+  window.addEventListener('touchend', () => { endDrag(); });
+})();
 // wire gearButton to toggle panel
 gearButton.addEventListener('click', () => {
   if (gearPanel.style.display === 'none' || gearPanel.style.display === '') {

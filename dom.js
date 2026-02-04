@@ -1,12 +1,12 @@
-// DOM references, UI handlers (chat, settings, skill tooltip), and small helpers.
-// Logic kept intact from original main.js but moved into dom.js to centralize DOM manipulation.
+// DOM references, UI handlers (chat, settings, skill tooltip), inventory and gear UI.
+// Centralized DOM manipulation and drag/drop logic.
 
 import { state } from './state.js';
 
 // Local HTML-escaping helper (exported for potential reuse)
 export function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-// --- DOM ---
+// --- DOM core elements from index.html ---
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
@@ -88,16 +88,11 @@ export function hideTransientMessage() {
   if (transientTimeout) { clearTimeout(transientTimeout); transientTimeout = null; }
 }
 
-// --- Death overlay ---
-// Full-screen greyed overlay shown when the local player dies.
-// Includes centered message and a respawn button. The respawn button will
-// clear the client's "awaiting respawn" state and let the next server
-// snapshot restore the player (the server may respawn as well).
+// --- Death overlay (same as before) ---
 const deathOverlay = document.createElement('div');
 deathOverlay.id = 'deathOverlay';
 deathOverlay.style.position = 'fixed';
 deathOverlay.style.inset = '0';
-// keep it hidden and non-interactive until explicitly shown
 deathOverlay.style.display = 'none';
 deathOverlay.style.visibility = 'hidden';
 deathOverlay.style.zIndex = 10050;
@@ -111,7 +106,6 @@ deathOverlay.style.flexDirection = 'column';
 deathOverlay.style.gap = '18px';
 deathOverlay.style.padding = '20px';
 deathOverlay.style.boxSizing = 'border-box';
-// NOTE: don't set display:flex here so the element stays fully hidden until showDeathOverlay toggles it
 
 const deathBox = document.createElement('div');
 deathBox.style.background = 'linear-gradient(180deg, rgba(30,30,30,0.98), rgba(18,18,20,0.98))';
@@ -152,18 +146,15 @@ respawnBtn.style.boxShadow = '0 8px 24px rgba(30,144,255,0.18)';
 
 respawnBtn.addEventListener('click', () => {
   try {
-    // Clear awaitingRespawn on client so snapshot updates will be applied again.
     if (state.player) {
       state.player.awaitingRespawn = false;
       state.player.dead = false;
-      // restore radius if we temporarily set it to zero
       if (state.player._radiusBackup !== undefined) {
         state.player.radius = state.player._radiusBackup;
         delete state.player._radiusBackup;
       }
     }
     hideDeathOverlay();
-    // Ask server for an updated snapshot if possible (not required but helps reduce latency)
     try { if (state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send(JSON.stringify({ t: 'ping', ts: Date.now() })); } catch (e) {}
   } catch (e) {}
 });
@@ -176,16 +167,10 @@ document.body.appendChild(deathOverlay);
 
 export function showDeathOverlay() {
   if (!deathOverlay) return;
-  // Safety guard: only show overlay if we have a player and either we've completed welcome or we are already in awaitingRespawn.
-  // This prevents the overlay appearing immediately on a fresh page load (before joining).
   if (!state.player) return;
   if (!state.player.id || (!state.welcomeReceived && !state.player.awaitingRespawn)) return;
-
-  // hide transient tooltip/popups
   hideTransientMessage();
   if (state.dom && state.dom.skillTooltip) state.dom.skillTooltip.style.display = 'none';
-  // backup radius and hide player visually by setting radius to 0 (renderers that draw by radius
-  // will not show the player). We keep the backup on state.player._radiusBackup to restore later.
   try {
     if (state.player && state.player._radiusBackup === undefined) {
       state.player._radiusBackup = state.player.radius;
@@ -194,7 +179,6 @@ export function showDeathOverlay() {
   } catch (e) {}
   deathOverlay.style.visibility = 'visible';
   deathOverlay.style.display = 'flex';
-  // ensure canvas doesn't receive input while dead unless overlay is dismissed
   try { state.dom.canvas.tabIndex = -1; } catch (e) {}
 }
 
@@ -205,7 +189,7 @@ export function hideDeathOverlay() {
   try { state.dom.canvas.tabIndex = 0; } catch (e) {}
 }
 
-// --- Reconnect overlay (auto-reconnect UI) ---
+// --- Reconnect overlay ---
 const reconnectOverlay = document.createElement('div');
 reconnectOverlay.id = 'reconnectOverlay';
 reconnectOverlay.style.position = 'fixed';
@@ -287,363 +271,7 @@ export function hideReconnectOverlay() {
   } catch (e) {}
 }
 
-// ---- gear button (replace existing gearButton creation) ----
-const gearButton = document.createElement('button');
-gearButton.id = 'gearButton';
-gearButton.title = 'Character / Gear';
-gearButton.type = 'button';
-// match settings button size & style (44x44)
-gearButton.style.position = 'fixed';
-gearButton.style.width = '44px';
-gearButton.style.height = '44px';
-gearButton.style.borderRadius = '6px';
-gearButton.style.border = 'none';
-gearButton.style.background = '#bdbdbd';           // same grey background as settings button
-gearButton.style.color = '#1e90ff';
-gearButton.style.zIndex = 10005;
-gearButton.style.cursor = 'pointer';
-gearButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.6)';
-gearButton.style.padding = '6px';
-gearButton.style.display = 'flex';
-gearButton.style.alignItems = 'center';
-gearButton.style.justifyContent = 'center';
-gearButton.setAttribute('aria-label', 'Open character and gear panel');
-
-// use your provided PNG as background image (place file at assets/ui/gearpanel.png)
-gearButton.style.backgroundImage = "url('assets/ui/gearpanel.png')";
-gearButton.style.backgroundRepeat = 'no-repeat';
-gearButton.style.backgroundPosition = 'center';
-gearButton.style.backgroundSize = '60%'; // scale icon inside button
-
-// ensure there's no text inside the button
-gearButton.textContent = '';
-document.body.appendChild(gearButton);
-
-// Gear panel (hidden by default)
-const gearPanel = document.createElement('div');
-gearPanel.id = 'gearPanel';
-gearPanel.style.position = 'fixed';
-gearPanel.style.top = '80px';
-gearPanel.style.right = 'calc(16vw - 220px)'; // fallback; render will reposition gear button dynamically anyway
-gearPanel.style.width = '340px';
-gearPanel.style.maxWidth = '92vw';
-gearPanel.style.background = 'linear-gradient(180deg,#141414,#0b0b0b)';
-gearPanel.style.color = '#fff';
-gearPanel.style.borderRadius = '10px';
-gearPanel.style.padding = '12px';
-gearPanel.style.boxShadow = '0 14px 60px rgba(0,0,0,0.6)';
-gearPanel.style.zIndex = 10006;
-gearPanel.style.display = 'none';
-gearPanel.style.pointerEvents = 'auto';
-gearPanel.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial';
-
-const gearTitleRow = document.createElement('div');
-gearTitleRow.style.display = 'flex';
-gearTitleRow.style.justifyContent = 'space-between';
-gearTitleRow.style.alignItems = 'center';
-gearTitleRow.style.marginBottom = '8px';
-
-const gearTitle = document.createElement('div');
-gearTitle.textContent = 'Character';
-gearTitle.style.fontWeight = '800';
-gearTitle.style.fontSize = '16px';
-gearTitleRow.appendChild(gearTitle);
-
-const gearClose = document.createElement('button');
-gearClose.type = 'button';
-gearClose.textContent = '✕';
-gearClose.style.background = 'transparent';
-gearClose.style.border = 'none';
-gearClose.style.color = '#ddd';
-gearClose.style.cursor = 'pointer';
-gearClose.style.fontSize = '16px';
-gearClose.addEventListener('click', () => { gearPanel.style.display = 'none'; });
-gearTitleRow.appendChild(gearClose);
-gearPanel.appendChild(gearTitleRow);
-
-// slots container
-const slotsContainer = document.createElement('div');
-slotsContainer.style.display = 'flex';
-slotsContainer.style.gap = '8px';
-slotsContainer.style.justifyContent = 'center';
-slotsContainer.style.marginBottom = '12px';
-
-// create 5 slot elements
-const gearSlots = [];
-for (let i = 0; i < state.EQUIP_SLOTS; i++) {
-  const slot = document.createElement('div');
-  slot.className = 'gearSlot';
-  slot.dataset.slot = String(i);
-  slot.style.width = '56px';
-  slot.style.height = '56px';
-  slot.style.borderRadius = '8px';
-  slot.style.background = 'rgba(255,255,255,0.03)';
-  slot.style.border = '1px solid rgba(255,255,255,0.06)';
-  slot.style.display = 'flex';
-  slot.style.alignItems = 'center';
-  slot.style.justifyContent = 'center';
-  slot.style.fontSize = '12px';
-  slot.style.color = '#fff';
-  slot.style.position = 'relative';
-  slot.style.cursor = 'pointer';
-  slot.style.userSelect = 'none';
-
-  // label placeholder
-  const lbl = document.createElement('div');
-  lbl.textContent = '+';
-  lbl.style.opacity = '0.8';
-  slot.appendChild(lbl);
-
-  // drop handlers
-  slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; });
-  slot.addEventListener('dragleave', (e) => { slot.style.outline = ''; });
-  slot.addEventListener('drop', (e) => {
-    e.preventDefault();
-    slot.style.outline = '';
-    try {
-      let data = null;
-      if (e.dataTransfer) {
-        // prefer structured data application/json
-        const raw = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain') || '';
-        if (raw) data = JSON.parse(raw);
-      }
-      if (data && data.id) {
-        // equip item into slot
-        const idx = Number(slot.dataset.slot);
-        state.equipItem(idx, data);
-        (idx);
-        showTransientMessage(`Equipped ${data.name} (slot ${idx+1})`, 1400);
-      } else {
-        showTransientMessage('Invalid item dropped', 1200);
-      }
-    } catch (err) {
-      console.warn('drop parse error', err);
-      showTransientMessage('Invalid item dropped', 1200);
-    }
-  });
-
-  // click to unequip
-  slot.addEventListener('click', (e) => {
-    const idx = Number(slot.dataset.slot);
-    if (state.equipment[idx]) {
-      state.unequipItem(idx);
-      (idx);
-      showTransientMessage('Unequipped', 900);
-    }
-  });
-
-  gearSlots.push(slot);
-  slotsContainer.appendChild(slot);
-}
-gearPanel.appendChild(slotsContainer);
-
-// small stats display
-const statsBox = document.createElement('div');
-statsBox.style.display = 'flex';
-statsBox.style.flexDirection = 'column';
-statsBox.style.gap = '6px';
-statsBox.style.fontSize = '13px';
-gearPanel.appendChild(statsBox);
-
-function updateStatsBox() {
-  statsBox.innerHTML = '';
-  const hp = Math.round(state.player.hp || 0);
-  const maxHp = Math.round(state.player.maxHp || 0);
-  const xp = Math.round(state.player.xp || 0);
-  const nextXp = Math.round(state.player.nextLevelXp || 0);
-  const lvl = state.player.level || 1;
-
-  const row1 = document.createElement('div');
-  row1.innerHTML = `<strong>${escapeHtml(state.player.name || 'Player')}</strong> — Lv ${lvl}`;
-  statsBox.appendChild(row1);
-
-  const row2 = document.createElement('div');
-  row2.textContent = `HP: ${hp} / ${maxHp}`;
-  statsBox.appendChild(row2);
-
-  const row3 = document.createElement('div');
-  row3.textContent = `XP: ${xp} / ${nextXp}`;
-  statsBox.appendChild(row3);
-}
-
-gearPanel.appendChild(statsBox);
-
-// append to body but keep hidden
-document.body.appendChild(gearPanel);
-// --- make the gear panel draggable (mouse + touch) and persist position ---
-(function makeGearPanelDraggable() {
-  if (!gearPanel) return;
-
-  const STORAGE_KEY = 'moborr_gear_panel_pos';
-
-  // Restore saved position (if any)
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const pos = JSON.parse(raw);
-      if (typeof pos.left === 'number' && typeof pos.top === 'number') {
-        // clear right property if set and apply left/top
-        gearPanel.style.right = '';
-        gearPanel.style.left = pos.left + 'px';
-        gearPanel.style.top = pos.top + 'px';
-      }
-    }
-  } catch (e) { /* ignore */ }
-
-  let dragging = false;
-  let dragOffsetX = 0;
-  let dragOffsetY = 0;
-
-  // Use the title row as the drag handle so clicking content won't start a drag
-  const dragHandle = gearTitleRow || gearPanel; // fallback to whole panel if title row missing
-  dragHandle.style.cursor = 'grab'; // visual affordance
-
-  function clampPosition(left, top, panelW, panelH) {
-    const vw = Math.max(200, window.innerWidth);
-    const vh = Math.max(200, window.innerHeight);
-    const minLeft = 8;
-    const minTop = 8;
-    const maxLeft = Math.max(minLeft, vw - panelW - 8);
-    const maxTop = Math.max(minTop, vh - panelH - 8);
-    return {
-      left: Math.min(maxLeft, Math.max(minLeft, left)),
-      top: Math.min(maxTop, Math.max(minTop, top))
-    };
-  }
-
-  function startDrag(clientX, clientY) {
-    const rect = gearPanel.getBoundingClientRect();
-    dragOffsetX = clientX - rect.left;
-    dragOffsetY = clientY - rect.top;
-    dragging = true;
-    // ensure left/top are set so we can move by modifying them
-    gearPanel.style.right = '';
-    gearPanel.style.left = rect.left + 'px';
-    gearPanel.style.top = rect.top + 'px';
-    // disable selection while dragging
-    document.body.style.userSelect = 'none';
-    dragHandle.style.cursor = 'grabbing';
-  }
-
-  function moveDrag(clientX, clientY) {
-    if (!dragging) return;
-    const panelW = gearPanel.offsetWidth;
-    const panelH = gearPanel.offsetHeight;
-    let left = clientX - dragOffsetX;
-    let top = clientY - dragOffsetY;
-    const clamped = clampPosition(left, top, panelW, panelH);
-    gearPanel.style.left = clamped.left + 'px';
-    gearPanel.style.top = clamped.top + 'px';
-  }
-
-  function endDrag() {
-    if (!dragging) return;
-    dragging = false;
-    // restore selection behavior
-    document.body.style.userSelect = '';
-    dragHandle.style.cursor = 'grab';
-    // persist position
-    try {
-      const rect = gearPanel.getBoundingClientRect();
-      const pos = { left: Math.round(rect.left), top: Math.round(rect.top) };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
-    } catch (e) {}
-  }
-
-  // Mouse events
-  dragHandle.addEventListener('mousedown', (ev) => {
-    // only left button
-    if (ev.button !== 0) return;
-    ev.preventDefault();
-    startDrag(ev.clientX, ev.clientY);
-  });
-  window.addEventListener('mousemove', (ev) => {
-    if (!dragging) return;
-    ev.preventDefault();
-    moveDrag(ev.clientX, ev.clientY);
-  });
-  window.addEventListener('mouseup', () => { endDrag(); });
-
-  // Touch events
-  dragHandle.addEventListener('touchstart', (ev) => {
-    if (!ev.touches || !ev.touches[0]) return;
-    const t = ev.touches[0];
-    ev.preventDefault();
-    startDrag(t.clientX, t.clientY);
-  }, { passive: false });
-  window.addEventListener('touchmove', (ev) => {
-    if (!dragging || !ev.touches || !ev.touches[0]) return;
-    const t = ev.touches[0];
-    ev.preventDefault();
-    moveDrag(t.clientX, t.clientY);
-  }, { passive: false });
-  window.addEventListener('touchend', () => { endDrag(); });
-})();
-// wire gearButton to toggle panel
-gearButton.addEventListener('click', () => {
-  if (gearPanel.style.display === 'none' || gearPanel.style.display === '') {
-    updateAllSlotVisuals();
-    updateStatsBox();
-    gearPanel.style.display = 'block';
-  } else {
-    gearPanel.style.display = 'none';
-  }
-});
-
-export function updateSlotVisual(slotIndex) {
-  const slotEl = gearSlots[slotIndex];
-  if (!slotEl) return;
-  slotEl.innerHTML = '';
-  // clear any background set previously
-  slotEl.style.backgroundImage = '';
-  slotEl.style.backgroundRepeat = '';
-  slotEl.style.backgroundPosition = '';
-  slotEl.style.backgroundSize = '';
-
-  const it = state.equipment[slotIndex];
-  if (!it) {
-    // empty -> show plus
-    const plus = document.createElement('div');
-    plus.textContent = '+';
-    plus.style.opacity = '0.8';
-    slotEl.appendChild(plus);
-    slotEl.title = `Empty slot ${slotIndex + 1}`;
-  } else {
-    // show equipped item icon/name
-    const icon = document.createElement('div');
-    icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
-    icon.style.fontSize = '14px';
-    icon.style.pointerEvents = 'none';
-    slotEl.appendChild(icon);
-
-    const nameBadge = document.createElement('div');
-    nameBadge.textContent = it.name || 'Item';
-    nameBadge.style.position = 'absolute';
-    nameBadge.style.bottom = '-18px';
-    nameBadge.style.left = '50%';
-    nameBadge.style.transform = 'translateX(-50%)';
-    nameBadge.style.fontSize = '11px';
-    nameBadge.style.opacity = '0.85';
-    slotEl.appendChild(nameBadge);
-
-    slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
-  }
-}
-
-export function updateAllSlotVisuals() {
-  for (let i = 0; i < gearSlots.length; i++) updateSlotVisual(i);
-  updateStatsBox();
-}
-
-// Expose gear show/hide
-export function showGearPanel() {
-  updateAllSlotVisuals();
-  updateStatsBox();
-  gearPanel.style.display = 'block';
-}
-export function hideGearPanel() { gearPanel.style.display = 'none'; }
-
-// Expose DOM items on state.dom for other modules to use
+// --- Expose core DOM refs early for main.js usage ---
 state.dom = {
   canvas, ctx,
   titleScreen, usernameInput, playButton,
@@ -657,15 +285,7 @@ state.dom = {
   deathOverlay,
   respawnBtn,
   // reconnect overlay
-  reconnectOverlay,
-  // gear UI
-  gearButton,
-  gearPanel,
-  gearSlots,
-  updateSlotVisual,
-  updateAllSlotVisuals,
-  showGearPanel,
-  hideGearPanel
+  reconnectOverlay
 };
 
 // Hide chat panel until game is ready
@@ -734,7 +354,6 @@ export function unfocusChat() {
   if (!state.dom.chatInput) return;
   state.dom.chatInput.blur();
   state.chatFocused = false;
-  // return focus to canvas so keyboard works for game again
   state.dom.canvas.focus?.();
 }
 
@@ -747,26 +366,22 @@ export function cleanupAfterFailedLoad(reason) {
   if (state.loadingTimeout) { clearTimeout(state.loadingTimeout); state.loadingTimeout = null; }
   if (state.sendInputInterval) { clearInterval(state.sendInputInterval); state.sendInputInterval = null; }
   try { if (state.ws) { state.ws.close(); state.ws = null; } } catch (e) {}
-  // hide loading overlay, show title, re-enable login controls
   if (state.dom.loadingScreen) state.dom.loadingScreen.style.display = 'none';
   if (state.dom.titleScreen) state.dom.titleScreen.style.display = 'flex';
   if (state.dom.playButton) state.dom.playButton.disabled = false;
   if (state.dom.usernameInput) state.dom.usernameInput.disabled = false;
-  // hide chat (should not be visible until fully ready)
   if (state.dom.chatPanel) state.dom.chatPanel.style.display = 'none';
   if (state.dom.chatInput) state.dom.chatInput.disabled = true;
   state.isLoading = false;
   state.welcomeReceived = false;
   state.gotFirstSnapshot = false;
-  // hide skill tooltip
-  state.dom.skillTooltip.style.display = 'none';
+  if (state.dom.skillTooltip) state.dom.skillTooltip.style.display = 'none';
   hideTransientMessage();
 }
 
-// Skill tooltip helpers (kept original rendering/formatting)
+// Skill tooltip helpers
 export function showSkillTooltip(meta, x, y) {
   const lines = [];
-  // Show adjusted damage/duration based on player's permanent multipliers
   const playerDamageMul = (state.player && state.player.damageMul) ? state.player.damageMul : 1;
   const buffDurationMul = (state.player && state.player.buffDurationMul) ? state.player.buffDurationMul : 1;
 
@@ -789,7 +404,6 @@ export function showSkillTooltip(meta, x, y) {
       const dur = Math.round(((meta.buff.durationMs||0) * buffDurationMul)/1000);
       lines.push(`<div style="font-size:12px;"><strong>Buff:</strong> Damage x${meta.buff.multiplier} for ${dur}s</div>`);
     } else {
-      // generic representation, adjust duration if present
       const copied = JSON.parse(JSON.stringify(meta.buff));
       if (copied.durationMs) copied.durationMs = Math.round(copied.durationMs * buffDurationMul);
       lines.push(`<div style="font-size:12px;"><strong>Buff:</strong> ${escapeHtml(JSON.stringify(copied))}</div>`);
@@ -797,7 +411,6 @@ export function showSkillTooltip(meta, x, y) {
   }
   if (meta.stunMs) lines.push(`<div style="font-size:12px;"><strong>Stun:</strong> ${Math.round(meta.stunMs/1000)}s</div>`);
   skillTooltip.innerHTML = lines.join('');
-  // clamp to viewport to avoid going offscreen
   const left = Math.max(6, Math.min(window.innerWidth - 220, x));
   const top = Math.max(6, Math.min(window.innerHeight - 120, y));
   skillTooltip.style.left = `${left}px`;
@@ -808,12 +421,619 @@ export function hideSkillTooltip() {
   skillTooltip.style.display = 'none';
 }
 
-// Export DOM elements/refs for other modules
-export function getCanvasContext() {
-  return { canvas, ctx };
+// ----------------- Gear UI -----------------
+// Gear button (match settings button 44x44) using supplied icon at assets/ui/gearpanel.png
+const gearButton = document.createElement('button');
+gearButton.id = 'gearButton';
+gearButton.title = 'Character / Gear';
+gearButton.type = 'button';
+gearButton.style.position = 'fixed';
+gearButton.style.width = '44px';
+gearButton.style.height = '44px';
+gearButton.style.borderRadius = '6px';
+gearButton.style.border = 'none';
+gearButton.style.background = '#bdbdbd';
+gearButton.style.color = '#1e90ff';
+gearButton.style.zIndex = 10005;
+gearButton.style.cursor = 'pointer';
+gearButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.6)';
+gearButton.style.padding = '6px';
+gearButton.style.display = 'flex';
+gearButton.style.alignItems = 'center';
+gearButton.style.justifyContent = 'center';
+gearButton.setAttribute('aria-label', 'Open character and gear panel');
+gearButton.style.backgroundImage = "url('assets/ui/gearpanel.png')";
+gearButton.style.backgroundRepeat = 'no-repeat';
+gearButton.style.backgroundPosition = 'center';
+gearButton.style.backgroundSize = '60%';
+gearButton.textContent = '';
+document.body.appendChild(gearButton);
+
+// Gear panel (hidden by default)
+const gearPanel = document.createElement('div');
+gearPanel.id = 'gearPanel';
+gearPanel.style.position = 'fixed';
+gearPanel.style.top = '80px';
+gearPanel.style.right = '16px';
+gearPanel.style.width = '340px';
+gearPanel.style.maxWidth = '92vw';
+gearPanel.style.background = 'linear-gradient(180deg,#141414,#0b0b0b)';
+gearPanel.style.color = '#fff';
+gearPanel.style.borderRadius = '10px';
+gearPanel.style.padding = '12px';
+gearPanel.style.boxShadow = '0 14px 60px rgba(0,0,0,0.6)';
+gearPanel.style.zIndex = 10006;
+gearPanel.style.display = 'none';
+gearPanel.style.pointerEvents = 'auto';
+gearPanel.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+
+const gearTitleRow = document.createElement('div');
+gearTitleRow.style.display = 'flex';
+gearTitleRow.style.justifyContent = 'space-between';
+gearTitleRow.style.alignItems = 'center';
+gearTitleRow.style.marginBottom = '8px';
+
+const gearTitle = document.createElement('div');
+gearTitle.textContent = 'Character';
+gearTitle.style.fontWeight = '800';
+gearTitle.style.fontSize = '16px';
+gearTitleRow.appendChild(gearTitle);
+
+const gearClose = document.createElement('button');
+gearClose.type = 'button';
+gearClose.textContent = '✕';
+gearClose.style.background = 'transparent';
+gearClose.style.border = 'none';
+gearClose.style.color = '#ddd';
+gearClose.style.cursor = 'pointer';
+gearClose.style.fontSize = '16px';
+gearClose.addEventListener('click', () => { gearPanel.style.display = 'none'; });
+gearTitleRow.appendChild(gearClose);
+gearPanel.appendChild(gearTitleRow);
+
+// slots container
+const slotsContainer = document.createElement('div');
+slotsContainer.style.display = 'flex';
+slotsContainer.style.gap = '8px';
+slotsContainer.style.justifyContent = 'center';
+slotsContainer.style.marginBottom = '12px';
+
+// gear slots (will be populated below)
+let gearSlots = []; // will be filled in after we create slots
+
+// small stats display
+const statsBox = document.createElement('div');
+statsBox.style.display = 'flex';
+statsBox.style.flexDirection = 'column';
+statsBox.style.gap = '6px';
+statsBox.style.fontSize = '13px';
+gearPanel.appendChild(statsBox);
+
+function updateStatsBox() {
+  statsBox.innerHTML = '';
+  const hp = Math.round(state.player.hp || 0);
+  const maxHp = Math.round(state.player.maxHp || 0);
+  const xp = Math.round(state.player.xp || 0);
+  const nextXp = Math.round(state.player.nextLevelXp || 0);
+  const lvl = state.player.level || 1;
+
+  const row1 = document.createElement('div');
+  row1.innerHTML = `<strong>${escapeHtml(state.player.name || 'Player')}</strong> — Lv ${lvl}`;
+  statsBox.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.textContent = `HP: ${hp} / ${maxHp}`;
+  statsBox.appendChild(row2);
+
+  const row3 = document.createElement('div');
+  row3.textContent = `XP: ${xp} / ${nextXp}`;
+  statsBox.appendChild(row3);
 }
 
-// Expose DOM object for other modules (already assigned to state.dom)
+gearPanel.appendChild(statsBox);
+document.body.appendChild(gearPanel);
+
+// Gear toggle
+gearButton.addEventListener('click', () => {
+  if (gearPanel.style.display === 'none' || gearPanel.style.display === '') {
+    updateAllSlotVisuals();
+    updateStatsBox();
+    gearPanel.style.display = 'block';
+  } else {
+    gearPanel.style.display = 'none';
+  }
+});
+
+// ----------------- Inventory UI (bottom-right) -----------------
+const inventoryContainer = document.createElement('div');
+inventoryContainer.id = 'inventoryContainer';
+inventoryContainer.style.position = 'fixed';
+inventoryContainer.style.bottom = '12px';
+inventoryContainer.style.right = '12px';
+inventoryContainer.style.zIndex = 10005;
+inventoryContainer.style.padding = '10px';
+inventoryContainer.style.borderRadius = '10px';
+inventoryContainer.style.background = 'rgba(20,20,22,0.55)'; // semi-transparent grey
+inventoryContainer.style.boxShadow = '0 10px 30px rgba(0,0,0,0.6)';
+inventoryContainer.style.pointerEvents = 'auto';
+inventoryContainer.style.display = 'grid';
+inventoryContainer.style.gridTemplateColumns = 'repeat(4, 64px)';
+inventoryContainer.style.gridAutoRows = '64px';
+inventoryContainer.style.gap = '10px';
+inventoryContainer.style.alignItems = 'center';
+inventoryContainer.style.justifyItems = 'center';
+
+const inventorySlots = [];
+for (let i = 0; i < state.INV_SLOTS; i++) {
+  const slot = document.createElement('div');
+  slot.className = 'inventorySlot';
+  slot.dataset.index = String(i);
+
+  slot.style.width = '64px';
+  slot.style.height = '64px';
+  slot.style.borderRadius = '8px';
+  slot.style.background = 'rgba(255,255,255,0.03)';
+  slot.style.border = '1px solid rgba(255,255,255,0.06)';
+  slot.style.display = 'flex';
+  slot.style.alignItems = 'center';
+  slot.style.justifyContent = 'center';
+  slot.style.fontSize = '14px';
+  slot.style.color = '#fff';
+  slot.style.position = 'relative';
+  slot.style.cursor = 'default';
+  slot.style.userSelect = 'none';
+  slot.draggable = false;
+
+  const inner = document.createElement('div');
+  inner.style.pointerEvents = 'none';
+  slot.appendChild(inner);
+
+  slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.14)'; });
+  slot.addEventListener('dragleave', (e) => { slot.style.outline = ''; });
+  slot.addEventListener('drop', (e) => {
+    e.preventDefault();
+    slot.style.outline = '';
+    const raw = (e.dataTransfer && (e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain'))) || '';
+    if (!raw) return;
+    let data;
+    try { data = JSON.parse(raw); } catch (err) { return; }
+
+    const destIdx = Number(slot.dataset.index);
+
+    if (data.source === 'inventory') {
+      const srcIdx = Number(data.index);
+      if (srcIdx === destIdx) return;
+      const srcItem = state.inventory[srcIdx];
+      const dstItem = state.inventory[destIdx];
+      state.inventory[destIdx] = srcItem;
+      state.inventory[srcIdx] = dstItem;
+      updateInventorySlotVisual(srcIdx);
+      updateInventorySlotVisual(destIdx);
+      showTransientMessage('Moved item', 800);
+    } else if (data.source === 'gear') {
+      const srcSlot = Number(data.index);
+      const item = state.equipment[srcSlot];
+      if (!item) { showTransientMessage('No item to move', 900); return; }
+      if (state.inventory[destIdx]) {
+        const dstItem = state.inventory[destIdx];
+        state.inventory[destIdx] = item;
+        state.equipItem(srcSlot, dstItem);
+        state.applyEquipmentBonuses();
+        updateInventorySlotVisual(destIdx);
+        updateSlotVisual(srcSlot);
+        updateAllSlotVisuals();
+        showTransientMessage('Swapped gear and inventory item', 1000);
+      } else {
+        state.inventory[destIdx] = item;
+        state.unequipItem(srcSlot);
+        updateInventorySlotVisual(destIdx);
+        updateSlotVisual(srcSlot);
+        showTransientMessage('Moved to inventory', 900);
+      }
+    } else if (data.source === 'external') {
+      const it = data.item;
+      if (!it) return;
+      if (state.inventory[destIdx]) {
+        const old = state.inventory[destIdx];
+        state.inventory[destIdx] = it;
+        let free = state.inventory.findIndex(s => !s);
+        if (free < 0) {
+          showTransientMessage('Inventory full', 1200);
+          // revert
+          state.inventory[destIdx] = old;
+          return;
+        } else {
+          state.inventory[free] = old;
+        }
+      } else {
+        state.inventory[destIdx] = it;
+      }
+      updateInventorySlotVisual(destIdx);
+      showTransientMessage('Picked up item', 900);
+    }
+  });
+
+  inventorySlots.push(slot);
+  inventoryContainer.appendChild(slot);
+}
+document.body.appendChild(inventoryContainer);
+
+// ----------------- Gear slots creation (with drag/drop) -----------------
+gearSlots = [];
+for (let i = 0; i < state.EQUIP_SLOTS; i++) {
+  const slot = document.createElement('div');
+  slot.className = 'gearSlot';
+  slot.dataset.slot = String(i);
+  slot.style.width = '56px';
+  slot.style.height = '56px';
+  slot.style.borderRadius = '8px';
+  slot.style.background = 'rgba(255,255,255,0.03)';
+  slot.style.border = '1px solid rgba(255,255,255,0.06)';
+  slot.style.display = 'flex';
+  slot.style.alignItems = 'center';
+  slot.style.justifyContent = 'center';
+  slot.style.fontSize = '12px';
+  slot.style.color = '#fff';
+  slot.style.position = 'relative';
+  slot.style.cursor = 'pointer';
+  slot.style.userSelect = 'none';
+
+  const lbl = document.createElement('div');
+  lbl.textContent = '+';
+  lbl.style.opacity = '0.8';
+  slot.appendChild(lbl);
+
+  slot.draggable = false;
+  slot.addEventListener('dragstart', function (e) {
+    const idx = Number(this.dataset.slot);
+    const it = state.equipment[idx];
+    if (!it || !e.dataTransfer) { e.preventDefault(); return; }
+    const payload = { item: JSON.parse(JSON.stringify(it)), source: 'gear', index: idx };
+    try { e.dataTransfer.setData('application/json', JSON.stringify(payload)); } catch (err) {}
+    try {
+      const dragCanvas = document.createElement('canvas');
+      dragCanvas.width = 56; dragCanvas.height = 56;
+      const c = dragCanvas.getContext('2d');
+      c.fillStyle = 'rgba(0,0,0,0.6)';
+      c.fillRect(0,0,56,56);
+      c.fillStyle = '#fff';
+      c.font = '20px system-ui, Arial';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(it.icon || (it.name ? it.name.charAt(0) : '?'), 28, 30);
+      e.dataTransfer.setDragImage(dragCanvas, 28, 28);
+    } catch (err) {}
+  });
+
+  slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; });
+  slot.addEventListener('dragleave', (e) => { slot.style.outline = ''; });
+
+  slot.addEventListener('drop', (e) => {
+    e.preventDefault();
+    slot.style.outline = '';
+    const raw = (e.dataTransfer && (e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain'))) || '';
+    if (!raw) return;
+    let data;
+    try { data = JSON.parse(raw); } catch (err) { return; }
+    const dst = Number(slot.dataset.slot);
+
+    if (data.source === 'inventory') {
+      const srcInv = Number(data.index);
+      const item = state.inventory[srcInv];
+      if (!item) { showTransientMessage('Invalid item', 900); return; }
+      const existing = state.equipment[dst];
+      if (!existing) {
+        state.equipItem(dst, item);
+        state.inventory[srcInv] = null;
+        updateSlotVisual(dst);
+        updateInventorySlotVisual(srcInv);
+        showTransientMessage(`Equipped ${item.name}`, 1000);
+      } else {
+        state.equipment[dst] = item;
+        state.inventory[srcInv] = existing;
+        state.applyEquipmentBonuses();
+        updateSlotVisual(dst);
+        updateInventorySlotVisual(srcInv);
+        showTransientMessage('Swapped with inventory item', 1000);
+      }
+    } else if (data.source === 'gear') {
+      const srcGear = Number(data.index);
+      if (srcGear === dst) return;
+      const a = state.equipment[srcGear];
+      const b = state.equipment[dst];
+      state.equipment[dst] = a || null;
+      state.equipment[srcGear] = b || null;
+      state.applyEquipmentBonuses();
+      updateSlotVisual(dst);
+      updateSlotVisual(srcGear);
+      showTransientMessage('Swapped gear slots', 900);
+    } else if (data.source === 'external') {
+      const it = data.item;
+      if (!it) return;
+      const existing = state.equipment[dst];
+      if (!existing) {
+        state.equipItem(dst, it);
+        updateSlotVisual(dst);
+        showTransientMessage(`Equipped ${it.name}`, 900);
+      } else {
+        const free = state.inventory.findIndex(s => !s);
+        if (free >= 0) {
+          state.inventory[free] = existing;
+          state.equipItem(dst, it);
+          updateInventorySlotVisual(free);
+          updateSlotVisual(dst);
+          showTransientMessage(`Equipped ${it.name} and moved old item to inventory`, 1200);
+        } else {
+          showTransientMessage('Inventory full — cannot equip', 1200);
+        }
+      }
+    }
+  });
+
+  slot.addEventListener('click', (e) => {
+    const idx = Number(slot.dataset.slot);
+    const it = state.equipment[idx];
+    if (!it) return;
+    const added = addItemToInventory(it);
+    if (added >= 0) {
+      state.unequipItem(idx);
+      updateSlotVisual(idx);
+      showTransientMessage('Unequipped to inventory', 1000);
+    } else {
+      showTransientMessage('Inventory full — cannot unequip', 1200);
+    }
+  });
+
+  gearSlots.push(slot);
+  slotsContainer.appendChild(slot);
+}
+gearPanel.insertBefore(slotsContainer, statsBox);
+
+// ----------------- Slot visuals & helpers -----------------
+export function updateSlotVisual(slotIndex) {
+  const slotEl = gearSlots[slotIndex];
+  if (!slotEl) return;
+  slotEl.innerHTML = '';
+  slotEl.style.backgroundImage = '';
+  slotEl.style.backgroundRepeat = '';
+  slotEl.style.backgroundPosition = '';
+  slotEl.style.backgroundSize = '';
+
+  const it = state.equipment[slotIndex];
+  if (!it) {
+    const plus = document.createElement('div');
+    plus.textContent = '+';
+    plus.style.opacity = '0.8';
+    slotEl.appendChild(plus);
+    slotEl.title = `Empty slot ${slotIndex + 1}`;
+    slotEl.draggable = false;
+  } else {
+    const icon = document.createElement('div');
+    icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
+    icon.style.fontSize = '14px';
+    icon.style.pointerEvents = 'none';
+    slotEl.appendChild(icon);
+
+    const nameBadge = document.createElement('div');
+    nameBadge.textContent = it.name || 'Item';
+    nameBadge.style.position = 'absolute';
+    nameBadge.style.bottom = '-18px';
+    nameBadge.style.left = '50%';
+    nameBadge.style.transform = 'translateX(-50%)';
+    nameBadge.style.fontSize = '11px';
+    nameBadge.style.opacity = '0.85';
+    slotEl.appendChild(nameBadge);
+
+    slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
+    slotEl.draggable = true;
+  }
+}
+
+export function updateAllSlotVisuals() {
+  for (let i = 0; i < gearSlots.length; i++) updateSlotVisual(i);
+  updateStatsBox();
+}
+
+// ----------------- Inventory visuals & drag handlers -----------------
+function inventoryDragStartHandler(e) {
+  // 'this' may be the slot element
+  const srcSlot = Number(this.dataset.index != null ? this.dataset.index : (this.parentElement && this.parentElement.dataset.index) || -1);
+  const item = state.inventory[srcSlot];
+  if (!item || !e.dataTransfer) { e.preventDefault(); return; }
+  const payload = { item: JSON.parse(JSON.stringify(item)), source: 'inventory', index: srcSlot };
+  try { e.dataTransfer.setData('application/json', JSON.stringify(payload)); } catch (err) {}
+  try {
+    const dragCanvas = document.createElement('canvas');
+    dragCanvas.width = 64; dragCanvas.height = 64;
+    const c = dragCanvas.getContext('2d');
+    c.fillStyle = 'rgba(0,0,0,0.6)';
+    c.fillRect(0,0,64,64);
+    c.fillStyle = '#fff';
+    c.font = '28px system-ui, Arial';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(item.icon || (item.name ? item.name.charAt(0) : '?'), 32, 34);
+    e.dataTransfer.setDragImage(dragCanvas, 32, 32);
+  } catch (err) {}
+}
+
+function updateInventorySlotVisual(slotIndex) {
+  const slotEl = inventorySlots[slotIndex];
+  const inner = slotEl && slotEl.firstElementChild;
+  if (!slotEl || !inner) return;
+  inner.innerHTML = '';
+  slotEl.draggable = false;
+  slotEl.title = `Empty`;
+
+  const it = state.inventory[slotIndex];
+  if (!it) {
+    // empty
+    const plus = document.createElement('div');
+    plus.textContent = '';
+    plus.style.opacity = '0.0';
+    inner.appendChild(plus);
+    slotEl.draggable = false;
+    slotEl.removeEventListener('dragstart', inventoryDragStartHandler); // safe to call
+  } else {
+    const icon = document.createElement('div');
+    icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
+    icon.style.fontSize = '20px';
+    icon.style.pointerEvents = 'none';
+    inner.appendChild(icon);
+    slotEl.title = `${it.name || 'Item'}`;
+    slotEl.draggable = true;
+    // add dragstart (avoid duplicate handlers by removing first)
+    slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
+    slotEl.addEventListener('dragstart', inventoryDragStartHandler);
+  }
+}
+
+function updateInventoryVisuals() {
+  for (let i = 0; i < inventorySlots.length; i++) updateInventorySlotVisual(i);
+}
+
+// API: add/remove inventory
+export function addItemToInventory(item, preferredIndex = -1) {
+  if (!item) return -1;
+  if (typeof preferredIndex === 'number' && preferredIndex >= 0 && preferredIndex < state.INV_SLOTS && !state.inventory[preferredIndex]) {
+    state.inventory[preferredIndex] = JSON.parse(JSON.stringify(item));
+    updateInventorySlotVisual(preferredIndex);
+    return preferredIndex;
+  }
+  const free = state.inventory.findIndex(s => !s);
+  if (free < 0) return -1;
+  state.inventory[free] = JSON.parse(JSON.stringify(item));
+  updateInventorySlotVisual(free);
+  return free;
+}
+
+export function removeItemFromInventory(slotIndex) {
+  if (typeof slotIndex !== 'number' || slotIndex < 0 || slotIndex >= state.INV_SLOTS) return null;
+  const it = state.inventory[slotIndex];
+  state.inventory[slotIndex] = null;
+  updateInventorySlotVisual(slotIndex);
+  return it;
+}
+
+// Initialize visuals
+updateInventoryVisuals();
+updateAllSlotVisuals();
+
+// ----------------- Make gearPanel draggable and persist position -----------------
+(function makeGearPanelDraggable() {
+  if (!gearPanel) return;
+
+  const STORAGE_KEY = 'moborr_gear_panel_pos';
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const pos = JSON.parse(raw);
+      if (typeof pos.left === 'number' && typeof pos.top === 'number') {
+        gearPanel.style.right = '';
+        gearPanel.style.left = pos.left + 'px';
+        gearPanel.style.top = pos.top + 'px';
+      }
+    }
+  } catch (e) { /* ignore */ }
+
+  let dragging = false;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+
+  const dragHandle = gearTitleRow || gearPanel;
+  dragHandle.style.cursor = 'grab';
+
+  function clampPosition(left, top, panelW, panelH) {
+    const vw = Math.max(200, window.innerWidth);
+    const vh = Math.max(200, window.innerHeight);
+    const minLeft = 8;
+    const minTop = 8;
+    const maxLeft = Math.max(minLeft, vw - panelW - 8);
+    const maxTop = Math.max(minTop, vh - panelH - 8);
+    return {
+      left: Math.min(maxLeft, Math.max(minLeft, left)),
+      top: Math.min(maxTop, Math.max(minTop, top))
+    };
+  }
+
+  function startDrag(clientX, clientY) {
+    const rect = gearPanel.getBoundingClientRect();
+    dragOffsetX = clientX - rect.left;
+    dragOffsetY = clientY - rect.top;
+    dragging = true;
+    gearPanel.style.right = '';
+    gearPanel.style.left = rect.left + 'px';
+    gearPanel.style.top = rect.top + 'px';
+    document.body.style.userSelect = 'none';
+    dragHandle.style.cursor = 'grabbing';
+  }
+
+  function moveDrag(clientX, clientY) {
+    if (!dragging) return;
+    const panelW = gearPanel.offsetWidth;
+    const panelH = gearPanel.offsetHeight;
+    let left = clientX - dragOffsetX;
+    let top = clientY - dragOffsetY;
+    const clamped = clampPosition(left, top, panelW, panelH);
+    gearPanel.style.left = clamped.left + 'px';
+    gearPanel.style.top = clamped.top + 'px';
+  }
+
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.userSelect = '';
+    dragHandle.style.cursor = 'grab';
+    try {
+      const rect = gearPanel.getBoundingClientRect();
+      const pos = { left: Math.round(rect.left), top: Math.round(rect.top) };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
+    } catch (e) {}
+  }
+
+  dragHandle.addEventListener('mousedown', (ev) => {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    startDrag(ev.clientX, ev.clientY);
+  });
+  window.addEventListener('mousemove', (ev) => {
+    if (!dragging) return;
+    ev.preventDefault();
+    moveDrag(ev.clientX, ev.clientY);
+  });
+  window.addEventListener('mouseup', () => { endDrag(); });
+
+  dragHandle.addEventListener('touchstart', (ev) => {
+    if (!ev.touches || !ev.touches[0]) return;
+    const t = ev.touches[0];
+    ev.preventDefault();
+    startDrag(t.clientX, t.clientY);
+  }, { passive: false });
+  window.addEventListener('touchmove', (ev) => {
+    if (!dragging || !ev.touches || !ev.touches[0]) return;
+    const t = ev.touches[0];
+    ev.preventDefault();
+    moveDrag(t.clientX, t.clientY);
+  }, { passive: false });
+  window.addEventListener('touchend', () => { endDrag(); });
+})();
+
+// ----------------- Export & extend state.dom with new UI pieces -----------------
+state.dom.gearButton = gearButton;
+state.dom.gearPanel = gearPanel;
+state.dom.gearSlots = gearSlots;
+state.dom.updateSlotVisual = updateSlotVisual;
+state.dom.updateAllSlotVisuals = updateAllSlotVisuals;
+state.dom.showGearPanel = () => { updateAllSlotVisuals(); updateStatsBox(); gearPanel.style.display = 'block'; };
+state.dom.hideGearPanel = () => { gearPanel.style.display = 'none'; };
+
+state.dom.inventoryContainer = inventoryContainer;
+state.dom.inventorySlots = inventorySlots;
+state.dom.addItemToInventory = addItemToInventory;
+state.dom.removeItemFromInventory = removeItemFromInventory;
+state.dom.updateInventoryVisuals = updateInventoryVisuals;
+
+// Export default convenience object (keeps previous API)
 export default {
   canvas,
   ctx,
@@ -851,19 +1071,22 @@ export default {
   cleanupAfterFailedLoad,
   showSkillTooltip,
   hideSkillTooltip,
-  // death overlay exports
   showDeathOverlay,
   hideDeathOverlay,
-  // reconnect overlay exports
   setReconnectCancelCallback,
   showReconnectOverlay,
   hideReconnectOverlay,
-  // gear exports
+  // gear & inventory
   gearButton,
   gearPanel,
   gearSlots,
   updateSlotVisual,
   updateAllSlotVisuals,
-  showGearPanel,
-  hideGearPanel
+  showGearPanel: state.dom.showGearPanel,
+  hideGearPanel: state.dom.hideGearPanel,
+  inventoryContainer,
+  inventorySlots,
+  addItemToInventory,
+  removeItemFromInventory,
+  updateInventoryVisuals
 };

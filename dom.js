@@ -111,7 +111,7 @@ deathOverlay.style.flexDirection = 'column';
 deathOverlay.style.gap = '18px';
 deathOverlay.style.padding = '20px';
 deathOverlay.style.boxSizing = 'border-box';
-deathOverlay.style.display = 'flex';
+// NOTE: don't set display:flex here so the element stays fully hidden until showDeathOverlay toggles it
 
 const deathBox = document.createElement('div');
 deathBox.style.background = 'linear-gradient(180deg, rgba(30,30,30,0.98), rgba(18,18,20,0.98))';
@@ -176,9 +176,10 @@ document.body.appendChild(deathOverlay);
 
 export function showDeathOverlay() {
   if (!deathOverlay) return;
-  // Safety guard: only show overlay if we have a player and have completed welcome/initialization.
+  // Safety guard: only show overlay if we have a player and either we've completed welcome or we are already in awaitingRespawn.
   // This prevents the overlay appearing immediately on a fresh page load (before joining).
-  if (!state.player || !state.player.id || !state.welcomeReceived) return;
+  if (!state.player) return;
+  if (!state.player.id || (!state.welcomeReceived && !state.player.awaitingRespawn)) return;
 
   // hide transient tooltip/popups
   hideTransientMessage();

@@ -778,21 +778,21 @@ function drawMinimap() {
   dom.ctx.restore();
 
   // Position the DOM gear button to the left of the minimap
-  try {
-    if (dom.gearButton) {
-      const dpr = window.devicePixelRatio || 1;
-      // convert minimap x,y in CSS pixels
-      const cssX = x; const cssY = y;
-      const btnSize = 36;
-      // position left of minimap with a small gap
-      dom.gearButton.style.left = `${Math.max(8, cssX - btnSize - 12)}px`;
-      dom.gearButton.style.top = `${cssY + 6}px`;
-    }
-    // Also keep gear panel stats updated if it's visible
-    if (dom.gearPanel && dom.gearPanel.style.display && dom.gearPanel.style.display !== 'none') {
-      if (typeof dom.updateAllSlotVisuals === 'function') dom.updateAllSlotVisuals();
-    }
-  } catch (e) {}
+ try {
+  if (dom.gearButton) {
+    const dpr = window.devicePixelRatio || 1;
+    // convert minimap x,y in CSS pixels
+    const cssX = x; const cssY = y;
+    const btnSize = 44; // match settings button & dom.js size
+    // position left of minimap with a small gap
+    dom.gearButton.style.left = `${Math.max(8, cssX - btnSize - 12)}px`;
+    dom.gearButton.style.top = `${cssY + 6}px`;
+  }
+  // Also keep gear panel stats updated if it's visible
+  if (dom.gearPanel && dom.gearPanel.style.display && dom.gearPanel.style.display !== 'none') {
+    if (typeof dom.updateAllSlotVisuals === 'function') dom.updateAllSlotVisuals();
+  }
+} catch (e) {}
 }
 
 // The rest of file unchanged (draw player, hotbar and main loop)

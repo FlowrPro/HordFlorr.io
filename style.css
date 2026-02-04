@@ -293,6 +293,14 @@ html, body {
   z-index: 10010;
 }
 
+/* Death overlay */
+#deathOverlay {
+  /* created/managed by dom.js; styles here as fallback */
+}
+#deathOverlay > div {
+  /* death box styling is already applied inline in dom.js; keep CSS fallback minimal */
+}
+
 /* small responsive */
 @media (max-width: 480px) {
   #titleScreen > h1 { font-size: 40px; margin-top: 28px; }

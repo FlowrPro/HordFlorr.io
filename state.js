@@ -36,7 +36,10 @@ export const state = (function(){
     serverX: null,
     serverY: null,
     localBuffs: [],        // optimistic visual buffs: {type, until, multiplier}
-    stunnedUntil: 0
+    stunnedUntil: 0,
+    // Death/respawn flags (client-side)
+    dead: false,
+    awaitingRespawn: false
   };
 
   // --- Movement smoothing / interp params ---

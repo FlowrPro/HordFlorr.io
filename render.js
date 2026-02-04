@@ -638,6 +638,7 @@ function drawMinimap() {
   const cy = y + size / 2;
   const scale = size / (state.map.size || (state.map.radius * 2));
 
+  // draw base map (circle or square)
   if (state.map.type === 'circle') {
     dom.ctx.beginPath();
     dom.ctx.arc(cx, cy, state.map.radius * scale, 0, Math.PI * 2);
@@ -684,6 +685,94 @@ function drawMinimap() {
         dom.ctx.strokeRect(wx, wy, ww, wh);
       }
     }
+  }
+
+  // Coordinate overlay: draw grid lines and numeric labels across minimap.
+  // This helps pick exact world coordinates. Stick to ~8 divisions for clarity.
+  try {
+    const WORLD_CENTER = state.map.center || { x: 0, y: 0 };
+    let worldMinX, worldMaxX, worldMinY, worldMaxY;
+    if (state.map.type === 'circle') {
+      const r = state.map.radius || 750;
+      worldMinX = WORLD_CENTER.x - r;
+      worldMaxX = WORLD_CENTER.x + r;
+      worldMinY = WORLD_CENTER.y - r;
+      worldMaxY = WORLD_CENTER.y + r;
+    } else {
+      const half = state.map.half || (state.map.size / 2);
+      worldMinX = WORLD_CENTER.x - half;
+      worldMaxX = WORLD_CENTER.x + half;
+      worldMinY = WORLD_CENTER.y - half;
+      worldMaxY = WORLD_CENTER.y + half;
+    }
+
+    // number of ticks (horizontal/vertical) to show
+    const TICKS = 8;
+    // compute step and round to nearest 50 for nicer labels
+    const stepXRaw = (worldMaxX - worldMinX) / TICKS;
+    const stepYRaw = (worldMaxY - worldMinY) / TICKS;
+    const roundTo = (v) => {
+      // round to 50/100/500/1000 depending on magnitude
+      const mag = Math.pow(10, Math.max(0, Math.floor(Math.log10(Math.abs(v || 1))) - 1));
+      const base = Math.max(50, Math.round(mag / 50) * 50);
+      return Math.max(50, Math.round(v / base) * base);
+    };
+    const stepX = stepXRaw > 0 ? Math.max(50, Math.round(stepXRaw / 50) * 50) : 100;
+    const stepY = stepYRaw > 0 ? Math.max(50, Math.round(stepYRaw / 50) * 50) : 100;
+
+    dom.ctx.save();
+    dom.ctx.lineWidth = 1;
+    dom.ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    dom.ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    dom.ctx.font = '10px system-ui, Arial';
+    dom.ctx.textAlign = 'center';
+    dom.ctx.textBaseline = 'top';
+
+    // vertical lines (X coordinates)
+    const startX = Math.ceil(worldMinX / stepX) * stepX;
+    for (let wx = startX; wx <= worldMaxX; wx += stepX) {
+      const sx = cx + (wx - WORLD_CENTER.x) * scale;
+      // only draw if inside minimap rect
+      if (sx >= cx - size/2 && sx <= cx + size/2) {
+        dom.ctx.beginPath();
+        dom.ctx.moveTo(sx, cy - size/2);
+        dom.ctx.lineTo(sx, cy + size/2);
+        dom.ctx.stroke();
+        // draw small label at top inside minimap
+        dom.ctx.fillText(String(Math.round(wx)), sx, cy - size/2 + 2);
+      }
+    }
+
+    // horizontal lines (Y coordinates)
+    dom.ctx.textAlign = 'left';
+    dom.ctx.textBaseline = 'middle';
+    const startY = Math.ceil(worldMinY / stepY) * stepY;
+    for (let wy = startY; wy <= worldMaxY; wy += stepY) {
+      const sy = cy + (wy - WORLD_CENTER.y) * scale;
+      if (sy >= cy - size/2 && sy <= cy + size/2) {
+        dom.ctx.beginPath();
+        dom.ctx.moveTo(cx - size/2, sy);
+        dom.ctx.lineTo(cx + size/2, sy);
+        dom.ctx.stroke();
+        // draw small label at left inside minimap
+        dom.ctx.fillText(String(Math.round(wy)), cx - size/2 + 4, sy);
+      }
+    }
+
+    // highlight center (0,0) if it falls within minimap
+    const centerX = cx + (0 - WORLD_CENTER.x) * scale;
+    const centerY = cy + (0 - WORLD_CENTER.y) * scale;
+    if (centerX >= cx - size/2 && centerX <= cx + size/2 && centerY >= cy - size/2 && centerY <= cy + size/2) {
+      dom.ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      dom.ctx.font = '11px system-ui, Arial';
+      dom.ctx.textAlign = 'center';
+      dom.ctx.textBaseline = 'bottom';
+      dom.ctx.fillText('(0,0)', centerX, centerY - 4);
+    }
+
+    dom.ctx.restore();
+  } catch (e) {
+    // fallback: don't draw coords if anything goes wrong
   }
 
   // player dot

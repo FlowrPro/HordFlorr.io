@@ -566,14 +566,6 @@ inventoryContainer.style.gridAutoRows = '64px';
 inventoryContainer.style.gap = '10px';
 inventoryContainer.style.alignItems = 'center';
 inventoryContainer.style.justifyItems = 'center';
-inventoryContainer.style.display = 'none';
-inventoryContainer.style.display = 'grid'; // define as grid but we'll override display to none
-inventoryContainer.style.display = 'none'; // final state hidden
-
-// Ensure grid template is present (we'll toggle display)
-inventoryContainer.style.gridTemplateColumns = 'repeat(4, 64px)';
-inventoryContainer.style.gridAutoRows = '64px';
-inventoryContainer.style.gap = '10px';
 
 const inventorySlots = [];
 for (let i = 0; i < state.INV_SLOTS; i++) {
@@ -598,6 +590,11 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
 
   const inner = document.createElement('div');
   inner.style.pointerEvents = 'none';
+  inner.style.width = '100%';
+  inner.style.height = '100%';
+  inner.style.display = 'flex';
+  inner.style.alignItems = 'center';
+  inner.style.justifyContent = 'center';
   slot.appendChild(inner);
 
   slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.14)'; });
@@ -651,7 +648,6 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
         let free = state.inventory.findIndex(s => !s);
         if (free < 0) {
           showTransientMessage('Inventory full', 1200);
-          // revert
           state.inventory[destIdx] = old;
           return;
         } else {
@@ -878,23 +874,78 @@ function updateInventorySlotVisual(slotIndex) {
 
   const it = state.inventory[slotIndex];
   if (!it) {
+    // empty
     const plus = document.createElement('div');
     plus.textContent = '';
     plus.style.opacity = '0.0';
     inner.appendChild(plus);
     slotEl.draggable = false;
     slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
-  } else {
-    const icon = document.createElement('div');
-    icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
-    icon.style.fontSize = '20px';
-    icon.style.pointerEvents = 'none';
-    inner.appendChild(icon);
+    return;
+  }
+
+  // If item has an image path (it.img), try to show it (with @2x fallback)
+  if (it.img && typeof it.img === 'string') {
+    // create image element and attempt to load a @2x variant first on high-DPI screens
+    const img = new Image();
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'contain';
+    img.alt = it.name || 'item';
+    let attempted2x = false;
+    const dpr = window.devicePixelRatio || 1;
+    if (dpr >= 2) {
+      // try @2x variant: e.g. path.png -> path@2x.png
+      const match = it.img.match(/^(.*)(\.[^./]+)$/);
+      if (match) {
+        const candidate = `${match[1]}@2x${match[2]}`;
+        attempted2x = true;
+        img.src = candidate;
+        img.onload = () => { /* success with @2x */ };
+        img.onerror = () => {
+          // fallback to base
+          img.onerror = null;
+          img.src = it.img;
+        };
+      } else {
+        img.src = it.img;
+      }
+    } else {
+      img.src = it.img;
+    }
+
+    // If image fails to load at all, show fallback glyph
+    img.addEventListener('error', () => {
+      inner.innerHTML = '';
+      const icon = document.createElement('div');
+      icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
+      icon.style.fontSize = '20px';
+      icon.style.pointerEvents = 'none';
+      inner.appendChild(icon);
+    });
+
+    img.addEventListener('load', () => {
+      // image loaded - ensure inner is using the image only
+    });
+
+    inner.appendChild(img);
     slotEl.title = `${it.name || 'Item'}`;
     slotEl.draggable = true;
     slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
     slotEl.addEventListener('dragstart', inventoryDragStartHandler);
+    return;
   }
+
+  // Fallback: show letter/icon
+  const icon = document.createElement('div');
+  icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
+  icon.style.fontSize = '20px';
+  icon.style.pointerEvents = 'none';
+  inner.appendChild(icon);
+  slotEl.title = `${it.name || 'Item'}`;
+  slotEl.draggable = true;
+  slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
+  slotEl.addEventListener('dragstart', inventoryDragStartHandler);
 }
 
 function updateInventoryVisuals() {

@@ -287,7 +287,233 @@ export function hideReconnectOverlay() {
   } catch (e) {}
 }
 
-// expose some DOM items on state.dom for other modules to use
+// --- Gear UI: gear button + panel with 5 slots ---
+// Gear button (position will be updated by render.drawMinimap)
+const gearButton = document.createElement('button');
+gearButton.id = 'gearButton';
+gearButton.title = 'Character / Gear';
+gearButton.type = 'button';
+gearButton.style.position = 'fixed';
+gearButton.style.width = '36px';
+gearButton.style.height = '36px';
+gearButton.style.borderRadius = '6px';
+gearButton.style.border = 'none';
+gearButton.style.background = '#2b2b2b';
+gearButton.style.color = '#fff';
+gearButton.style.zIndex = 10005;
+gearButton.style.cursor = 'pointer';
+gearButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.6)';
+gearButton.textContent = '⚙';
+document.body.appendChild(gearButton);
+
+// Gear panel (hidden by default)
+const gearPanel = document.createElement('div');
+gearPanel.id = 'gearPanel';
+gearPanel.style.position = 'fixed';
+gearPanel.style.top = '80px';
+gearPanel.style.right = 'calc(16vw - 220px)'; // fallback; render will reposition gear button dynamically anyway
+gearPanel.style.width = '340px';
+gearPanel.style.maxWidth = '92vw';
+gearPanel.style.background = 'linear-gradient(180deg,#141414,#0b0b0b)';
+gearPanel.style.color = '#fff';
+gearPanel.style.borderRadius = '10px';
+gearPanel.style.padding = '12px';
+gearPanel.style.boxShadow = '0 14px 60px rgba(0,0,0,0.6)';
+gearPanel.style.zIndex = 10006;
+gearPanel.style.display = 'none';
+gearPanel.style.pointerEvents = 'auto';
+gearPanel.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+
+const gearTitleRow = document.createElement('div');
+gearTitleRow.style.display = 'flex';
+gearTitleRow.style.justifyContent = 'space-between';
+gearTitleRow.style.alignItems = 'center';
+gearTitleRow.style.marginBottom = '8px';
+
+const gearTitle = document.createElement('div');
+gearTitle.textContent = 'Character';
+gearTitle.style.fontWeight = '800';
+gearTitle.style.fontSize = '16px';
+gearTitleRow.appendChild(gearTitle);
+
+const gearClose = document.createElement('button');
+gearClose.type = 'button';
+gearClose.textContent = '✕';
+gearClose.style.background = 'transparent';
+gearClose.style.border = 'none';
+gearClose.style.color = '#ddd';
+gearClose.style.cursor = 'pointer';
+gearClose.style.fontSize = '16px';
+gearClose.addEventListener('click', () => { gearPanel.style.display = 'none'; });
+gearTitleRow.appendChild(gearClose);
+gearPanel.appendChild(gearTitleRow);
+
+// slots container
+const slotsContainer = document.createElement('div');
+slotsContainer.style.display = 'flex';
+slotsContainer.style.gap = '8px';
+slotsContainer.style.justifyContent = 'center';
+slotsContainer.style.marginBottom = '12px';
+
+// create 5 slot elements
+const gearSlots = [];
+for (let i = 0; i < state.EQUIP_SLOTS; i++) {
+  const slot = document.createElement('div');
+  slot.className = 'gearSlot';
+  slot.dataset.slot = String(i);
+  slot.style.width = '56px';
+  slot.style.height = '56px';
+  slot.style.borderRadius = '8px';
+  slot.style.background = 'rgba(255,255,255,0.03)';
+  slot.style.border = '1px solid rgba(255,255,255,0.06)';
+  slot.style.display = 'flex';
+  slot.style.alignItems = 'center';
+  slot.style.justifyContent = 'center';
+  slot.style.fontSize = '12px';
+  slot.style.color = '#fff';
+  slot.style.position = 'relative';
+  slot.style.cursor = 'pointer';
+  slot.style.userSelect = 'none';
+
+  // label placeholder
+  const lbl = document.createElement('div');
+  lbl.textContent = '+';
+  lbl.style.opacity = '0.8';
+  slot.appendChild(lbl);
+
+  // drop handlers
+  slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; });
+  slot.addEventListener('dragleave', (e) => { slot.style.outline = ''; });
+  slot.addEventListener('drop', (e) => {
+    e.preventDefault();
+    slot.style.outline = '';
+    try {
+      let data = null;
+      if (e.dataTransfer) {
+        // prefer structured data application/json
+        const raw = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain') || '';
+        if (raw) data = JSON.parse(raw);
+      }
+      if (data && data.id) {
+        // equip item into slot
+        const idx = Number(slot.dataset.slot);
+        state.equipItem(idx, data);
+        updateSlotVisual(idx);
+        showTransientMessage(`Equipped ${data.name} (slot ${idx+1})`, 1400);
+      } else {
+        showTransientMessage('Invalid item dropped', 1200);
+      }
+    } catch (err) {
+      console.warn('drop parse error', err);
+      showTransientMessage('Invalid item dropped', 1200);
+    }
+  });
+
+  // click to unequip
+  slot.addEventListener('click', (e) => {
+    const idx = Number(slot.dataset.slot);
+    if (state.equipment[idx]) {
+      state.unequipItem(idx);
+      updateSlotVisual(idx);
+      showTransientMessage('Unequipped', 900);
+    }
+  });
+
+  gearSlots.push(slot);
+  slotsContainer.appendChild(slot);
+}
+gearPanel.appendChild(slotsContainer);
+
+// small stats display
+const statsBox = document.createElement('div');
+statsBox.style.display = 'flex';
+statsBox.style.flexDirection = 'column';
+statsBox.style.gap = '6px';
+statsBox.style.fontSize = '13px';
+gearPanel.appendChild(statsBox);
+
+function updateStatsBox() {
+  statsBox.innerHTML = '';
+  const hp = Math.round(state.player.hp || 0);
+  const maxHp = Math.round(state.player.maxHp || 0);
+  const xp = Math.round(state.player.xp || 0);
+  const nextXp = Math.round(state.player.nextLevelXp || 0);
+  const lvl = state.player.level || 1;
+
+  const row1 = document.createElement('div');
+  row1.innerHTML = `<strong>${escapeHtml(state.player.name || 'Player')}</strong> — Lv ${lvl}`;
+  statsBox.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.textContent = `HP: ${hp} / ${maxHp}`;
+  statsBox.appendChild(row2);
+
+  const row3 = document.createElement('div');
+  row3.textContent = `XP: ${xp} / ${nextXp}`;
+  statsBox.appendChild(row3);
+}
+
+gearPanel.appendChild(statsBox);
+
+// append to body but keep hidden
+document.body.appendChild(gearPanel);
+
+// wire gearButton to toggle panel
+gearButton.addEventListener('click', () => {
+  if (gearPanel.style.display === 'none' || gearPanel.style.display === '') {
+    updateAllSlotVisuals();
+    updateStatsBox();
+    gearPanel.style.display = 'block';
+  } else {
+    gearPanel.style.display = 'none';
+  }
+});
+
+// helpers to update slot visuals
+export function updateSlotVisual(slotIndex) {
+  const slotEl = gearSlots[slotIndex];
+  if (!slotEl) return;
+  slotEl.innerHTML = '';
+  const it = state.equipment[slotIndex];
+  if (!it) {
+    const plus = document.createElement('div');
+    plus.textContent = '+';
+    plus.style.opacity = '0.8';
+    slotEl.appendChild(plus);
+    slotEl.title = `Empty slot ${slotIndex+1}`;
+  } else {
+    const icon = document.createElement('div');
+    icon.textContent = it.icon || it.name.charAt(0) || '?';
+    icon.style.fontSize = '14px';
+    icon.style.pointerEvents = 'none';
+    slotEl.appendChild(icon);
+    const nameBadge = document.createElement('div');
+    nameBadge.textContent = it.name || 'Item';
+    nameBadge.style.position = 'absolute';
+    nameBadge.style.bottom = '-18px';
+    nameBadge.style.left = '50%';
+    nameBadge.style.transform = 'translateX(-50%)';
+    nameBadge.style.fontSize = '11px';
+    nameBadge.style.opacity = '0.85';
+    slotEl.appendChild(nameBadge);
+    slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
+  }
+}
+
+export function updateAllSlotVisuals() {
+  for (let i = 0; i < gearSlots.length; i++) updateSlotVisual(i);
+  updateStatsBox();
+}
+
+// Expose gear show/hide
+export function showGearPanel() {
+  updateAllSlotVisuals();
+  updateStatsBox();
+  gearPanel.style.display = 'block';
+}
+export function hideGearPanel() { gearPanel.style.display = 'none'; }
+
+// Expose DOM items on state.dom for other modules to use
 state.dom = {
   canvas, ctx,
   titleScreen, usernameInput, playButton,
@@ -301,7 +527,15 @@ state.dom = {
   deathOverlay,
   respawnBtn,
   // reconnect overlay
-  reconnectOverlay
+  reconnectOverlay,
+  // gear UI
+  gearButton,
+  gearPanel,
+  gearSlots,
+  updateSlotVisual,
+  updateAllSlotVisuals,
+  showGearPanel,
+  hideGearPanel
 };
 
 // Hide chat panel until game is ready
@@ -493,5 +727,13 @@ export default {
   // reconnect overlay exports
   setReconnectCancelCallback,
   showReconnectOverlay,
-  hideReconnectOverlay
+  hideReconnectOverlay,
+  // gear exports
+  gearButton,
+  gearPanel,
+  gearSlots,
+  updateSlotVisual,
+  updateAllSlotVisuals,
+  showGearPanel,
+  hideGearPanel
 };

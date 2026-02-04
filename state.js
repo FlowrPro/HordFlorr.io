@@ -141,6 +141,12 @@ export const state = (function(){
   // equipment items are objects like { id, name, stats: { maxHp:+, baseDamage:+, baseSpeed:+, damageMul:+, buffDurationMul:+ } }
   const equipment = new Array(EQUIP_SLOTS).fill(null);
 
+  // --- Inventory ---
+  const INV_SLOTS = 12;
+  // inventory stores item objects or null. An item is expected to be an object like:
+  // { id: 'unique', name: 'Iron Helm', icon: '🪖', stats: { maxHp: 50, baseDamage: 5, ... } }
+  const inventory = new Array(INV_SLOTS).fill(null);
+
   // --- NETWORK ---
   let ws = null;
   let sendInputInterval = null;
@@ -246,6 +252,9 @@ export const state = (function(){
     equipItem,
     unequipItem,
     applyEquipmentBonuses,
+    // inventory
+    INV_SLOTS,
+    inventory,
     // network vars
     ws,
     sendInputInterval,

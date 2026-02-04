@@ -50,6 +50,44 @@ skillTooltip.style.borderRadius = '8px';
 skillTooltip.style.fontSize = '12px';
 document.body.appendChild(skillTooltip);
 
+// Transient top-center message (for non-chat notifications)
+const transientMessage = document.createElement('div');
+transientMessage.id = 'transientMessage';
+transientMessage.style.position = 'fixed';
+transientMessage.style.top = '12px';
+transientMessage.style.left = '50%';
+transientMessage.style.transform = 'translateX(-50%)';
+transientMessage.style.pointerEvents = 'none';
+transientMessage.style.display = 'none';
+transientMessage.style.zIndex = 10010;
+transientMessage.style.background = 'rgba(0,0,0,0.8)';
+transientMessage.style.color = '#fff';
+transientMessage.style.padding = '10px 14px';
+transientMessage.style.borderRadius = '8px';
+transientMessage.style.fontSize = '14px';
+transientMessage.style.fontWeight = '700';
+transientMessage.style.boxShadow = '0 6px 20px rgba(0,0,0,0.6)';
+document.body.appendChild(transientMessage);
+
+let transientTimeout = null;
+export function showTransientMessage(text, duration = 1600) {
+  try {
+    if (!transientMessage) return;
+    transientMessage.textContent = String(text || '');
+    transientMessage.style.display = 'block';
+    if (transientTimeout) { clearTimeout(transientTimeout); transientTimeout = null; }
+    transientTimeout = setTimeout(() => {
+      transientMessage.style.display = 'none';
+      transientTimeout = null;
+    }, duration);
+  } catch (e) {}
+}
+export function hideTransientMessage() {
+  if (!transientMessage) return;
+  transientMessage.style.display = 'none';
+  if (transientTimeout) { clearTimeout(transientTimeout); transientTimeout = null; }
+}
+
 // expose some DOM items on state.dom for other modules to use
 state.dom = {
   canvas, ctx,
@@ -58,7 +96,8 @@ state.dom = {
   chatPanel, chatLog, chatInput, chatSend,
   settingsBtn, settingsPanel, settingsClose, tabButtons, tabContents,
   mouseMovementCheckbox, keyboardMovementCheckbox, clickMovementCheckbox, graphicsQuality, showCoordinatesCheckbox,
-  skillTooltip
+  skillTooltip,
+  transientMessage
 };
 
 // Hide chat panel until game is ready
@@ -153,21 +192,40 @@ export function cleanupAfterFailedLoad(reason) {
   state.gotFirstSnapshot = false;
   // hide skill tooltip
   state.dom.skillTooltip.style.display = 'none';
+  hideTransientMessage();
 }
 
 // Skill tooltip helpers (kept original rendering/formatting)
 export function showSkillTooltip(meta, x, y) {
   const lines = [];
+  // Show adjusted damage/duration based on player's permanent multipliers
+  const playerDamageMul = (state.player && state.player.damageMul) ? state.player.damageMul : 1;
+  const buffDurationMul = (state.player && state.player.buffDurationMul) ? state.player.buffDurationMul : 1;
+
   lines.push(`<div style="font-weight:700;margin-bottom:6px;">${escapeHtml(meta.name)}</div>`);
   if (meta.kind === 'melee' && typeof meta.range === 'number') lines.push(`<div style="font-size:12px;"><strong>Range:</strong> ${meta.range}</div>`);
   else if (typeof meta.radius === 'number') lines.push(`<div style="font-size:12px;"><strong>Radius:</strong> ${meta.radius}</div>`);
-  if (typeof meta.damage === 'number') lines.push(`<div style="font-size:12px;"><strong>Damage:</strong> ${meta.damage}</div>`);
+
+  if (typeof meta.damage === 'number') {
+    const adjustedDamage = Math.round(meta.damage * playerDamageMul);
+    if (playerDamageMul !== 1) lines.push(`<div style="font-size:12px;"><strong>Damage:</strong> ${adjustedDamage} <small style="opacity:0.7">(base ${meta.damage})</small></div>`);
+    else lines.push(`<div style="font-size:12px;"><strong>Damage:</strong> ${adjustedDamage}</div>`);
+  }
   if (typeof meta.count === 'number') lines.push(`<div style="font-size:12px;"><strong>Count:</strong> ${meta.count}</div>`);
   if (typeof meta.cooldown === 'number') lines.push(`<div style="font-size:12px;"><strong>Cooldown:</strong> ${meta.cooldown}s</div>`);
   if (meta.buff) {
-    if (meta.buff.type === 'speed') lines.push(`<div style="font-size:12px;"><strong>Buff:</strong> Speed x${meta.buff.multiplier} for ${Math.round((meta.buff.durationMs||0)/1000)}s</div>`);
-    else if (meta.buff.type === 'damage') lines.push(`<div style="font-size:12px;"><strong>Buff:</strong> Damage x${meta.buff.multiplier} for ${Math.round((meta.buff.durationMs||0)/1000)}s</div>`);
-    else lines.push(`<div style="font-size:12px;"><strong>Buff:</strong> ${escapeHtml(JSON.stringify(meta.buff))}</div>`);
+    if (meta.buff.type === 'speed') {
+      const dur = Math.round(((meta.buff.durationMs||0) * buffDurationMul)/1000);
+      lines.push(`<div style="font-size:12px;"><strong>Buff:</strong> Speed x${meta.buff.multiplier} for ${dur}s</div>`);
+    } else if (meta.buff.type === 'damage') {
+      const dur = Math.round(((meta.buff.durationMs||0) * buffDurationMul)/1000);
+      lines.push(`<div style="font-size:12px;"><strong>Buff:</strong> Damage x${meta.buff.multiplier} for ${dur}s</div>`);
+    } else {
+      // generic representation, adjust duration if present
+      const copied = JSON.parse(JSON.stringify(meta.buff));
+      if (copied.durationMs) copied.durationMs = Math.round(copied.durationMs * buffDurationMul);
+      lines.push(`<div style="font-size:12px;"><strong>Buff:</strong> ${escapeHtml(JSON.stringify(copied))}</div>`);
+    }
   }
   if (meta.stunMs) lines.push(`<div style="font-size:12px;"><strong>Stun:</strong> ${Math.round(meta.stunMs/1000)}s</div>`);
   skillTooltip.innerHTML = lines.join('');
@@ -210,6 +268,9 @@ export default {
   graphicsQuality,
   showCoordinatesCheckbox,
   skillTooltip,
+  transientMessage,
+  showTransientMessage,
+  hideTransientMessage,
   appendChatMessage,
   focusChat,
   unfocusChat,

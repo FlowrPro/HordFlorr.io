@@ -249,7 +249,7 @@ export function castSkill(slotIndex) {
   const meta = (state.SKILL_META[state.player.class] && state.SKILL_META[state.player.class][slotIndex]) || null;
 
   // For target required kinds, ensure selectedTarget exists — do this BEFORE applying cooldown
-  const needsTarget = meta && (meta.kind === 'proj_target' || meta.kind === 'proj_target_stun' || meta.kind === 'proj_target' || meta.kind === 'proj_target_stun');
+  const needsTarget = meta && (meta.kind === 'proj_target' || meta.kind === 'proj_target_stun');
   if (needsTarget && (!state.selectedTarget || !state.selectedTarget.id)) {
     dom.showTransientMessage(`No target selected for ${meta ? meta.name : 'skill'}`, 1400);
     return false;

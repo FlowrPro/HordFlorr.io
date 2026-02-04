@@ -204,6 +204,13 @@ export function handleServerMessage(msg) {
       if (typeof msg.player.level === 'number') state.player.level = msg.player.level;
       if (typeof msg.player.xp === 'number') state.player.xp = msg.player.xp;
       if (msg.player.class) state.player.class = msg.player.class;
+      // If server supplies a base maxHp on welcome, treat it as the authoritative base
+      if (typeof msg.player.maxHp === 'number') {
+        state.player._baseMaxHp = msg.player.maxHp;
+        state.player.maxHp = msg.player.maxHp;
+        // ensure current HP isn't higher than max
+        state.player.hp = Math.min(state.player.hp || state.player.maxHp, state.player.maxHp);
+      }
     }
     if (msg.mapType === 'square' || msg.mapSize || msg.mapHalf || msg.mapRadius) {
       state.map.type = 'square';
@@ -261,6 +268,14 @@ export function handleServerMessage(msg) {
         if (typeof sp.xp === 'number') state.player.xp = sp.xp;
         if (typeof sp.nextLevelXp === 'number') state.player.nextLevelXp = sp.nextLevelXp;
 
+        // If server provided a base maxHp in the snapshot, update our stored base so equipment bonuses use authoritative base.
+        if (typeof sp.maxHp === 'number') {
+          // store the server base so applyEquipmentBonuses will add equipment bonuses on top of server base
+          state.player._baseMaxHp = sp.maxHp;
+          // set authoritative value (we'll reapply equipment bonuses next)
+          state.player.maxHp = sp.maxHp;
+        }
+
         // Ensure local HP is updated from snapshot so UI can show correct values
         if (typeof sp.hp === 'number') {
           const prevHp = Number.isFinite(state.player.hp) ? state.player.hp : 0;
@@ -291,7 +306,6 @@ export function handleServerMessage(msg) {
           }
           state.player.hp = newHp;
         }
-        if (typeof sp.maxHp === 'number') state.player.maxHp = sp.maxHp;
 
         // Re-apply equipment bonuses after applying the server snapshot so equipment modifies the displayed maxHp/hp.
         try {

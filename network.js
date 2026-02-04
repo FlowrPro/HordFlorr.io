@@ -167,6 +167,18 @@ export function handleServerMessage(msg) {
               start: Date.now(),
               duration: 1200
             });
+          } else if (newHp < prevHp) {
+            // show damage number (from authoritative snapshot)
+            state.remoteEffects.push({
+              type: 'damage',
+              x: state.player.x,
+              y: state.player.y - (state.player.radius + 6),
+              color: 'rgba(255,80,80,0.95)',
+              text: `${prevHp - newHp}`,
+              start: Date.now(),
+              duration: 1100
+            });
+            state.remoteEffects.push({ type: 'aoe', x: state.player.x, y: state.player.y, radius: 24, color: 'rgba(255,80,80,0.9)', start: Date.now(), duration: 350 });
           }
           state.player.hp = newHp;
         }
@@ -212,6 +224,7 @@ export function handleServerMessage(msg) {
         rm.targetY = m.y;
         rm.vx = m.vx || rm.vx;
         rm.vy = m.vy || rm.vy;
+        const prevHp = rm.hp;
         rm.hp = (typeof m.hp === 'number') ? m.hp : rm.hp;
         rm.maxHp = m.maxHp || rm.maxHp;
         rm.radius = m.radius || rm.radius;
@@ -219,6 +232,18 @@ export function handleServerMessage(msg) {
         if (rm.dead && rm.hp > 0) rm.dead = false;
         // if server says hp <= 0, mark dead quickly to fade
         if (rm.hp <= 0 && !rm.dead) { rm.dead = true; rm.alpha = 1.0; }
+        // If mob was damaged (snapshot shows lower hp than before), show damage number
+        if (typeof prevHp === 'number' && typeof rm.hp === 'number' && rm.hp < prevHp) {
+          state.remoteEffects.push({
+            type: 'damage',
+            x: rm.targetX || rm.displayX,
+            y: (rm.targetY || rm.displayY) - ((rm.radius || 18) + 6),
+            color: 'rgba(255,80,80,0.95)',
+            text: `${Math.round(prevHp - rm.hp)}`,
+            start: Date.now(),
+            duration: 1100
+          });
+        }
       }
     }
     // remove mobs not present
@@ -332,6 +357,33 @@ export function handleServerMessage(msg) {
         state.remoteEffects.push({ type: 'aoe', x: rm.targetX || rm.displayX, y: rm.targetY || rm.displayY, radius: 28, color: 'rgba(200,200,200,0.9)', start: Date.now(), duration: 700 });
       }
     }
+  } else if (msg.t === 'mob_hurt') {
+    // show damage number at mob
+    const mid = msg.mobId;
+    const dmg = msg.damage || 0;
+    const newHp = (typeof msg.hp === 'number') ? msg.hp : null;
+    if (mid && state.remoteMobs.has(mid)) {
+      const rm = state.remoteMobs.get(mid);
+      if (rm) {
+        // show damage number
+        state.remoteEffects.push({
+          type: 'damage',
+          x: rm.displayX || rm.targetX,
+          y: (rm.displayY || rm.targetY) - ((rm.radius || 18) + 6),
+          color: 'rgba(255,80,80,0.95)',
+          text: `${Math.round(dmg)}`,
+          start: Date.now(),
+          duration: 1100
+        });
+        if (typeof newHp === 'number') {
+          rm.hp = newHp;
+          if (rm.hp <= 0) { rm.dead = true; rm.alpha = 1.0; }
+        }
+      }
+    } else {
+      // still push a generic damage effect near player if we can't find mob coords
+      state.remoteEffects.push({ type: 'damage', x: state.player.x, y: state.player.y - (state.player.radius + 6), color: 'rgba(255,80,80,0.95)', text: `${Math.round(dmg)}`, start: Date.now(), duration: 1100 });
+    }
   } else if (msg.t === 'cast_effect') {
     // Server sent an effect (aoe/melee/buff) — show visual effect
     const skill = msg.skill || msg.type || '';
@@ -384,30 +436,76 @@ export function handleServerMessage(msg) {
       if (rp) rp.stunnedUntil = until;
     }
   } else if (msg.t === 'player_hurt') {
-    // optional: show flashing effect when we are hit
-    if (String(msg.id) === String(state.player.id)) {
-      // Update local hp immediately if provided in the message so the HP bar reflects damage faster
-      if (typeof msg.hp === 'number') {
-        const prev = Number.isFinite(state.player.hp) ? state.player.hp : 0;
-        const newHp = msg.hp;
-        if (newHp > prev) {
-          // heal
-          state.remoteEffects.push({
-            type: 'heal',
-            x: state.player.x,
-            y: state.player.y - (state.player.radius + 12),
-            color: 'rgba(120,255,140,0.95)',
-            text: `+${newHp - prev} HP`,
-            start: Date.now(),
-            duration: 1200
-          });
-        } else if (newHp < prev) {
-          // damage flash (reuse aoe red)
-          state.remoteEffects.push({ type: 'aoe', x: state.player.x, y: state.player.y, radius: 24, color: 'rgba(255,80,80,0.9)', start: Date.now(), duration: 350 });
-        }
-        state.player.hp = newHp;
+    // show damage number when the player is hurt (includes damage amount from server)
+    const id = msg.id;
+    const dmg = msg.damage || 0;
+    if (String(id) === String(state.player.id)) {
+      const prev = Number.isFinite(state.player.hp) ? state.player.hp : 0;
+      const newHp = (typeof msg.hp === 'number') ? msg.hp : prev;
+      if (dmg > 0) {
+        state.remoteEffects.push({
+          type: 'damage',
+          x: state.player.x,
+          y: state.player.y - (state.player.radius + 6),
+          color: 'rgba(255,80,80,0.95)',
+          text: `${Math.round(dmg)}`,
+          start: Date.now(),
+          duration: 1100
+        });
       } else {
         state.remoteEffects.push({ type: 'aoe', x: state.player.x, y: state.player.y, radius: 24, color: 'rgba(255,80,80,0.9)', start: Date.now(), duration: 350 });
+      }
+      if (typeof msg.hp === 'number') state.player.hp = msg.hp;
+    } else {
+      // damage to other player: find remotePlayers and show damage
+      const rp = state.remotePlayers.get(String(id));
+      if (rp) {
+        state.remoteEffects.push({
+          type: 'damage',
+          x: rp.displayX || rp.targetX,
+          y: (rp.displayY || rp.targetY) - ((rp.radius || 28) + 6),
+          color: 'rgba(255,80,80,0.95)',
+          text: `${Math.round(dmg)}`,
+          start: Date.now(),
+          duration: 1100
+        });
+      } else {
+        // fallback generic effect near center
+        state.remoteEffects.push({ type: 'damage', x: state.player.x, y: state.player.y - (state.player.radius + 6), color: 'rgba(255,80,80,0.95)', text: `${Math.round(dmg)}`, start: Date.now(), duration: 1100 });
+      }
+    }
+  } else if (msg.t === 'player_healed') {
+    // server-side authoritative heal message
+    const pid = msg.id;
+    const amount = msg.amount || 0;
+    if (String(pid) === String(state.player.id)) {
+      const prev = Number.isFinite(state.player.hp) ? state.player.hp : 0;
+      const newHp = (typeof msg.hp === 'number') ? msg.hp : prev;
+      if (newHp > prev) {
+        state.remoteEffects.push({
+          type: 'heal',
+          x: state.player.x,
+          y: state.player.y - (state.player.radius + 12),
+          color: 'rgba(120,255,140,0.95)',
+          text: `+${amount} HP`,
+          start: Date.now(),
+          duration: 1200
+        });
+      }
+      if (typeof msg.hp === 'number') state.player.hp = msg.hp;
+    } else {
+      // healed other player — show small heal text near them (best effort)
+      const rp = state.remotePlayers.get(String(pid));
+      if (rp) {
+        state.remoteEffects.push({
+          type: 'heal',
+          x: rp.displayX || rp.targetX,
+          y: (rp.displayY || rp.targetY) - ((rp.radius || 28) + 12),
+          color: 'rgba(120,255,140,0.95)',
+          text: `+${amount} HP`,
+          start: Date.now(),
+          duration: 1200
+        });
       }
     }
   } else if (msg.t === 'cast_rejected') {

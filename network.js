@@ -76,8 +76,11 @@ export function connectToServer() {
     }
     if (state.dom.chatInput) state.dom.chatInput.disabled = true;
     if (state.dom.chatPanel) state.dom.chatPanel.style.display = 'none';
+    // Ensure we clear the interval stored on state to avoid leaking intervals after disconnect
+    if (state.sendInputInterval) { clearInterval(state.sendInputInterval); state.sendInputInterval = null; }
     state.ws = null;
     ws = null;
+    // clear local handle as well if present
     if (sendInputInterval) { clearInterval(sendInputInterval); sendInputInterval = null; }
   });
 
@@ -125,11 +128,14 @@ export function handleServerMessage(msg) {
       state.map.size = msg.mapSize || (state.map.half * 2);
       state.map.center = { x: 0, y: 0 };
       state.map.walls = Array.isArray(msg.walls) ? msg.walls : [];
+      // signal render to rebuild cached jagged walls
+      state.map._jaggedNeedsUpdate = true;
     } else if (msg.mapType === 'circle' || msg.mapRadius) {
       state.map.type = 'circle';
       state.map.radius = (msg.mapRadius || msg.mapHalf || state.map.radius);
       state.map.center = { x: 0, y: 0 };
       state.map.walls = Array.isArray(msg.walls) ? msg.walls : [];
+      state.map._jaggedNeedsUpdate = true;
     }
     if (typeof msg.spawnX === 'number' && typeof msg.spawnY === 'number') {
       state.player.x = msg.spawnX; state.player.y = msg.spawnY;
@@ -309,6 +315,8 @@ export function handleServerMessage(msg) {
     // Update map.walls if server included walls in snapshot (keep latest)
     if (Array.isArray(msg.walls)) {
       state.map.walls = msg.walls;
+      // signal render to rebuild cached jagged walls
+      state.map._jaggedNeedsUpdate = true;
     }
 
     if (!state.gotFirstSnapshot) {
@@ -546,33 +554,3 @@ export function handleServerMessage(msg) {
     }
   }
 }
-
-// Chat send helper (client-side)
-export function sendChat() {
-  if (!state.dom.chatInput || !state.dom.chatInput.value) return;
-  const txt = state.dom.chatInput.value.trim();
-  if (!txt) { dom.unfocusChat(); return; }
-  const chatId = `${Date.now()}-${Math.random().toString(36).slice(2,9)}`;
-  const ts = Date.now();
-  appendChatMessage({ name: state.player.name || 'You', text: txt, ts, chatId, local: true });
-  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-    try {
-      state.ws.send(JSON.stringify({ t: 'chat', text: txt, chatId }));
-    } catch (e) {}
-  } else {
-    appendChatMessage({ text: 'Not connected — message not sent', ts: Date.now(), system: true });
-    state.pendingChatIds.delete(chatId);
-  }
-  state.dom.chatInput.value = '';
-  // unfocus after sending (as requested)
-  dom.unfocusChat();
-}
-
-// Expose a function to set the interval externally (used by main wiring)
-export function setSendInputIntervalHandle(handle) {
-  state.sendInputInterval = handle;
-}
-
-// Provide setter for ws (for tests or future use)
-export function getWs() { return state.ws; }
-export function setWs(w) { state.ws = w; ws = w; }

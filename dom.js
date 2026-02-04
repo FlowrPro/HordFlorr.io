@@ -287,23 +287,36 @@ export function hideReconnectOverlay() {
   } catch (e) {}
 }
 
-// --- Gear UI: gear button + panel with 5 slots ---
-// Gear button (position will be updated by render.drawMinimap)
+// ---- gear button (replace existing gearButton creation) ----
 const gearButton = document.createElement('button');
 gearButton.id = 'gearButton';
 gearButton.title = 'Character / Gear';
 gearButton.type = 'button';
+// match settings button size & style (44x44)
 gearButton.style.position = 'fixed';
-gearButton.style.width = '36px';
-gearButton.style.height = '36px';
+gearButton.style.width = '44px';
+gearButton.style.height = '44px';
 gearButton.style.borderRadius = '6px';
 gearButton.style.border = 'none';
-gearButton.style.background = '#2b2b2b';
-gearButton.style.color = '#fff';
+gearButton.style.background = '#bdbdbd';           // same grey background as settings button
+gearButton.style.color = '#1e90ff';
 gearButton.style.zIndex = 10005;
 gearButton.style.cursor = 'pointer';
 gearButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.6)';
-gearButton.textContent = '⚙';
+gearButton.style.padding = '6px';
+gearButton.style.display = 'flex';
+gearButton.style.alignItems = 'center';
+gearButton.style.justifyContent = 'center';
+gearButton.setAttribute('aria-label', 'Open character and gear panel');
+
+// use your provided PNG as background image (place file at assets/ui/gearpanel.png)
+gearButton.style.backgroundImage = "url('assets/ui/gearpanel.png')";
+gearButton.style.backgroundRepeat = 'no-repeat';
+gearButton.style.backgroundPosition = 'center';
+gearButton.style.backgroundSize = '60%'; // scale icon inside button
+
+// ensure there's no text inside the button
+gearButton.textContent = '';
 document.body.appendChild(gearButton);
 
 // Gear panel (hidden by default)

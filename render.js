@@ -636,53 +636,115 @@ function drawMinimap() {
 
   const cx = x + size / 2;
   const cy = y + size / 2;
-  const scale = size / (state.map.size || (state.map.radius * 2));
 
+  // Determine world width (diameter) used for minimap scaling
+  const worldDiameter = state.map.size || (state.map.radius * 2);
+  const scale = size / worldDiameter;
+
+  // Draw grid overlay for coordinate system (20 squares across diameter)
+  const SQUARES = 20;
+  const halfSquares = SQUARES / 2; // 10
+  const squareWorld = worldDiameter / SQUARES; // world units per square
+  const squarePx = squareWorld * scale; // pixels per square on minimap
+
+  // Background for map area
   if (state.map.type === 'circle') {
     dom.ctx.beginPath();
-    dom.ctx.arc(cx, cy, state.map.radius * scale, 0, Math.PI * 2);
+    dom.ctx.arc(cx, cy, (state.map.radius * scale), 0, Math.PI * 2);
     dom.ctx.fillStyle = '#6fbf6f';
     dom.ctx.fill();
 
     dom.ctx.beginPath();
-    dom.ctx.arc(cx, cy, state.map.radius * scale, 0, Math.PI * 2);
+    dom.ctx.arc(cx, cy, (state.map.radius * scale), 0, Math.PI * 2);
     dom.ctx.lineWidth = 2;
     dom.ctx.strokeStyle = '#2a6b2a';
     dom.ctx.stroke();
   } else {
-    const half = state.map.half || (state.map.size/2);
-    const ms = half * 2 * scale;
+    const ms = worldDiameter * scale;
     dom.ctx.fillStyle = '#6fbf6f';
     dom.ctx.fillRect(cx - ms/2, cy - ms/2, ms, ms);
     dom.ctx.beginPath();
     dom.ctx.lineWidth = 2;
     dom.ctx.strokeStyle = '#2a6b2a';
     dom.ctx.strokeRect(cx - ms/2, cy - ms/2, ms, ms);
+  }
 
-    // draw walls in minimap (rects or polygons)
-    dom.ctx.fillStyle = '#6b4f3b';
-    dom.ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-    for (const w of (state.map.walls || [])) {
-      if (w && Array.isArray(w.points)) {
-        dom.ctx.beginPath();
-        for (let i = 0; i < w.points.length; i++) {
-          const pt = w.points[i];
-          const wx = cx + (pt.x - state.map.center.x) * scale;
-          const wy = cy + (pt.y - state.map.center.y) * scale;
-          if (i === 0) dom.ctx.moveTo(wx, wy);
-          else dom.ctx.lineTo(wx, wy);
-        }
-        dom.ctx.closePath();
-        dom.ctx.fill();
-        dom.ctx.stroke();
-      } else if (typeof w.x === 'number' && typeof w.w === 'number') {
-        const wx = cx + (w.x - state.map.center.x) * scale;
-        const wy = cy + (w.y - state.map.center.y) * scale;
-        const ww = w.w * scale;
-        const wh = w.h * scale;
-        dom.ctx.fillRect(wx, wy, ww, wh);
-        dom.ctx.strokeRect(wx, wy, ww, wh);
+  // Grid lines
+  dom.ctx.save();
+  dom.ctx.lineWidth = 1;
+  for (let i = -halfSquares; i <= halfSquares; i++) {
+    const px = cx + i * squarePx;
+    // vertical line: only draw within minimap square bounds
+    dom.ctx.beginPath();
+    // Axis line (x=0) thicker
+    if (i === 0) {
+      dom.ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      dom.ctx.lineWidth = 1.8;
+    } else {
+      dom.ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      dom.ctx.lineWidth = 1;
+    }
+    dom.ctx.moveTo(px, cy - size/2);
+    dom.ctx.lineTo(px, cy + size/2);
+    dom.ctx.stroke();
+
+    // X labels every 2 squares to reduce clutter
+    if (i % 2 === 0) {
+      dom.ctx.font = '10px system-ui, Arial';
+      dom.ctx.textAlign = 'center';
+      dom.ctx.textBaseline = 'top';
+      dom.ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      dom.ctx.fillText(String(i), px, y + size + 2);
+    }
+  }
+  for (let j = -halfSquares; j <= halfSquares; j++) {
+    const py = cy - j * squarePx; // note: j positive is up -> subtract in pixel space
+    dom.ctx.beginPath();
+    if (j === 0) {
+      dom.ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      dom.ctx.lineWidth = 1.8;
+    } else {
+      dom.ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      dom.ctx.lineWidth = 1;
+    }
+    dom.ctx.moveTo(cx - size/2, py);
+    dom.ctx.lineTo(cx + size/2, py);
+    dom.ctx.stroke();
+
+    // Y labels every 2 squares (label to left)
+    if (j % 2 === 0) {
+      dom.ctx.font = '10px system-ui, Arial';
+      dom.ctx.textAlign = 'right';
+      dom.ctx.textBaseline = 'middle';
+      dom.ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      dom.ctx.fillText(String(j), x - 6, py);
+    }
+  }
+  dom.ctx.restore();
+
+  // draw walls in minimap (rects or polygons) - keep existing behavior
+  dom.ctx.fillStyle = '#6b4f3b';
+  dom.ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  for (const w of (state.map.walls || [])) {
+    if (w && Array.isArray(w.points)) {
+      dom.ctx.beginPath();
+      for (let i = 0; i < w.points.length; i++) {
+        const pt = w.points[i];
+        const wx = cx + (pt.x - state.map.center.x) * scale;
+        const wy = cy + (pt.y - state.map.center.y) * scale;
+        if (i === 0) dom.ctx.moveTo(wx, wy);
+        else dom.ctx.lineTo(wx, wy);
       }
+      dom.ctx.closePath();
+      dom.ctx.fill();
+      dom.ctx.stroke();
+    } else if (typeof w.x === 'number' && typeof w.w === 'number') {
+      const wx = cx + (w.x - state.map.center.x) * scale;
+      const wy = cy + (w.y - state.map.center.y) * scale;
+      const ww = w.w * scale;
+      const wh = w.h * scale;
+      dom.ctx.fillRect(wx, wy, ww, wh);
+      dom.ctx.strokeRect(wx, wy, ww, wh);
     }
   }
 
@@ -694,13 +756,13 @@ function drawMinimap() {
   dom.ctx.arc(px, py, Math.max(3, Math.min(8, state.player.radius * 0.18)), 0, Math.PI * 2);
   dom.ctx.fill();
 
-  // mobs on minimap (small red dots) - changed to red as requested
+  // mobs on minimap (small grey dots)
   for (const rm of state.remoteMobs.values()) {
     if (typeof rm.targetX !== 'number' || typeof rm.targetY !== 'number') continue;
     const mx = cx + (rm.targetX - state.map.center.x) * scale;
     const my = cy + (rm.targetY - state.map.center.y) * scale;
     dom.ctx.beginPath();
-    dom.ctx.fillStyle = 'rgba(220,80,80,0.95)'; // red for mobs now
+    dom.ctx.fillStyle = 'rgba(150,150,150,0.95)';
     dom.ctx.arc(mx, my, Math.max(1.5, Math.min(4, (rm.radius || 12) * 0.08)), 0, Math.PI * 2);
     dom.ctx.fill();
   }
@@ -718,7 +780,19 @@ function drawCoordinatesBottomRight() {
   const vw = dom.canvas.width / (window.devicePixelRatio || 1);
   const vh = dom.canvas.height / (window.devicePixelRatio || 1);
   const padding = 12;
-  const text = `x: ${Math.round(state.player.x)}, y: ${Math.round(state.player.y)}`;
+
+  // Map to integer grid where center is (0,0) and diameter == 20 squares
+  const worldDiameter = state.map.size || (state.map.radius * 2);
+  const SQUARES = 20;
+  const squareWorld = worldDiameter / SQUARES;
+
+  // Compute grid coordinates. We want +X to the right, +Y upward.
+  const dx = state.player.x - state.map.center.x;
+  const dy = state.player.y - state.map.center.y;
+  const gridX = Math.round(dx / squareWorld);
+  const gridY = Math.round(-dy / squareWorld); // invert so up = positive
+
+  const text = `x: ${gridX}, y: ${gridY}`;
   dom.ctx.save();
   dom.ctx.font = '14px system-ui, Arial';
   dom.ctx.textBaseline = 'bottom';

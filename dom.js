@@ -88,6 +88,115 @@ export function hideTransientMessage() {
   if (transientTimeout) { clearTimeout(transientTimeout); transientTimeout = null; }
 }
 
+// --- Death overlay ---
+// Full-screen greyed overlay shown when the local player dies.
+// Includes centered message and a respawn button. The respawn button will
+// clear the client's "awaiting respawn" state and let the next server
+// snapshot restore the player (the server may respawn as well).
+const deathOverlay = document.createElement('div');
+deathOverlay.id = 'deathOverlay';
+deathOverlay.style.position = 'fixed';
+deathOverlay.style.inset = '0';
+deathOverlay.style.display = 'none';
+deathOverlay.style.zIndex = 10050;
+deathOverlay.style.background = 'rgba(20,20,22,0.6)';
+deathOverlay.style.backdropFilter = 'grayscale(40%) blur(2px)';
+deathOverlay.style.webkitBackdropFilter = 'grayscale(40%) blur(2px)';
+deathOverlay.style.alignItems = 'center';
+deathOverlay.style.justifyContent = 'center';
+deathOverlay.style.pointerEvents = 'auto';
+deathOverlay.style.flexDirection = 'column';
+deathOverlay.style.display = 'none';
+deathOverlay.style.gap = '18px';
+deathOverlay.style.padding = '20px';
+deathOverlay.style.boxSizing = 'border-box';
+deathOverlay.style.display = 'flex';
+
+const deathBox = document.createElement('div');
+deathBox.style.background = 'linear-gradient(180deg, rgba(30,30,30,0.98), rgba(18,18,20,0.98))';
+deathBox.style.color = '#fff';
+deathBox.style.padding = '28px';
+deathBox.style.borderRadius = '12px';
+deathBox.style.boxShadow = '0 16px 60px rgba(0,0,0,0.6)';
+deathBox.style.maxWidth = 'min(90vw, 520px)';
+deathBox.style.textAlign = 'center';
+deathBox.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial';
+deathBox.style.pointerEvents = 'auto';
+
+const deathTitle = document.createElement('div');
+deathTitle.textContent = 'You have died';
+deathTitle.style.fontSize = '28px';
+deathTitle.style.fontWeight = '800';
+deathTitle.style.color = '#ffd54a';
+deathTitle.style.marginBottom = '8px';
+
+const deathMsg = document.createElement('div');
+deathMsg.textContent = 'Take a breath. Press respawn to return to the world.';
+deathMsg.style.fontSize = '14px';
+deathMsg.style.opacity = '0.95';
+deathMsg.style.marginBottom = '16px';
+
+const respawnBtn = document.createElement('button');
+respawnBtn.id = 'respawnBtn';
+respawnBtn.type = 'button';
+respawnBtn.textContent = 'Respawn';
+respawnBtn.style.fontSize = '16px';
+respawnBtn.style.padding = '10px 16px';
+respawnBtn.style.borderRadius = '8px';
+respawnBtn.style.border = 'none';
+respawnBtn.style.background = '#1e90ff';
+respawnBtn.style.color = '#fff';
+respawnBtn.style.cursor = 'pointer';
+respawnBtn.style.boxShadow = '0 8px 24px rgba(30,144,255,0.18)';
+
+respawnBtn.addEventListener('click', () => {
+  try {
+    // Clear awaitingRespawn on client so snapshot updates will be applied again.
+    if (state.player) {
+      state.player.awaitingRespawn = false;
+      state.player.dead = false;
+      // restore radius if we temporarily set it to zero
+      if (state.player._radiusBackup !== undefined) {
+        state.player.radius = state.player._radiusBackup;
+        delete state.player._radiusBackup;
+      }
+    }
+    hideDeathOverlay();
+    // Ask server for an updated snapshot if possible (not required but helps reduce latency)
+    try { if (state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send(JSON.stringify({ t: 'ping', ts: Date.now() })); } catch (e) {}
+  } catch (e) {}
+});
+
+deathBox.appendChild(deathTitle);
+deathBox.appendChild(deathMsg);
+deathBox.appendChild(respawnBtn);
+deathOverlay.appendChild(deathBox);
+document.body.appendChild(deathOverlay);
+
+export function showDeathOverlay() {
+  if (!deathOverlay) return;
+  // hide transient tooltip/popups
+  hideTransientMessage();
+  if (state.dom && state.dom.skillTooltip) state.dom.skillTooltip.style.display = 'none';
+  // backup radius and hide player visually by setting radius to 0 (renderers that draw by radius
+  // will not show the player). We keep the backup on state.player._radiusBackup to restore later.
+  try {
+    if (state.player && !state.player._radiusBackup) {
+      state.player._radiusBackup = state.player.radius;
+      state.player.radius = 0;
+    }
+  } catch (e) {}
+  deathOverlay.style.display = 'flex';
+  // ensure canvas doesn't receive input while dead unless overlay is dismissed
+  try { state.dom.canvas.tabIndex = -1; } catch (e) {}
+}
+
+export function hideDeathOverlay() {
+  if (!deathOverlay) return;
+  deathOverlay.style.display = 'none';
+  try { state.dom.canvas.tabIndex = 0; } catch (e) {}
+}
+
 // expose some DOM items on state.dom for other modules to use
 state.dom = {
   canvas, ctx,
@@ -97,7 +206,10 @@ state.dom = {
   settingsBtn, settingsPanel, settingsClose, tabButtons, tabContents,
   mouseMovementCheckbox, keyboardMovementCheckbox, clickMovementCheckbox, graphicsQuality, showCoordinatesCheckbox,
   skillTooltip,
-  transientMessage
+  transientMessage,
+  // death overlay
+  deathOverlay,
+  respawnBtn
 };
 
 // Hide chat panel until game is ready
@@ -279,5 +391,8 @@ export default {
   setLoadingText,
   cleanupAfterFailedLoad,
   showSkillTooltip,
-  hideSkillTooltip
+  hideSkillTooltip,
+  // death overlay exports
+  showDeathOverlay,
+  hideDeathOverlay
 };

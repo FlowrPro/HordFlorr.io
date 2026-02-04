@@ -227,6 +227,13 @@ export function handleServerMessage(msg) {
     state.welcomeReceived = true;
     setLoadingText('Welcome received — loading world…');
 
+    // Re-apply equipment bonuses after welcome so client-side equipment modifies HP/speed etc.
+    try {
+      if (typeof state.applyEquipmentBonuses === 'function') state.applyEquipmentBonuses();
+      // refresh UI if available
+      if (state.dom && typeof state.dom.updateAllSlotVisuals === 'function') state.dom.updateAllSlotVisuals();
+    } catch (e) {}
+
     // Start sending input only after welcome received to avoid flooding the server with input while unauthenticated.
     if (!state.sendInputInterval) state.sendInputInterval = setInterval(sendInputPacket, 50);
   } else if (msg.t === 'snapshot') {
@@ -285,6 +292,13 @@ export function handleServerMessage(msg) {
           state.player.hp = newHp;
         }
         if (typeof sp.maxHp === 'number') state.player.maxHp = sp.maxHp;
+
+        // Re-apply equipment bonuses after applying the server snapshot so equipment modifies the displayed maxHp/hp.
+        try {
+          if (typeof state.applyEquipmentBonuses === 'function') state.applyEquipmentBonuses();
+          if (state.dom && typeof state.dom.updateAllSlotVisuals === 'function') state.dom.updateAllSlotVisuals();
+        } catch (e) {}
+
       } else {
         let rp = state.remotePlayers.get(id);
         if (!rp) {

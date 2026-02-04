@@ -372,6 +372,8 @@ export function cleanupAfterFailedLoad(reason) {
   if (state.dom.usernameInput) state.dom.usernameInput.disabled = false;
   if (state.dom.chatPanel) state.dom.chatPanel.style.display = 'none';
   if (state.dom.chatInput) state.dom.chatInput.disabled = true;
+  // hide inventory as well
+  try { if (state.dom.inventoryContainer) state.dom.inventoryContainer.style.display = 'none'; } catch (e) {}
   state.isLoading = false;
   state.welcomeReceived = false;
   state.gotFirstSnapshot = false;
@@ -545,6 +547,7 @@ gearButton.addEventListener('click', () => {
 });
 
 // ----------------- Inventory UI (bottom-right) -----------------
+// inventory starts hidden until the game is loaded
 const inventoryContainer = document.createElement('div');
 inventoryContainer.id = 'inventoryContainer';
 inventoryContainer.style.position = 'fixed';
@@ -556,12 +559,21 @@ inventoryContainer.style.borderRadius = '10px';
 inventoryContainer.style.background = 'rgba(20,20,22,0.55)'; // semi-transparent grey
 inventoryContainer.style.boxShadow = '0 10px 30px rgba(0,0,0,0.6)';
 inventoryContainer.style.pointerEvents = 'auto';
-inventoryContainer.style.display = 'grid';
+// keep hidden until game ready
+inventoryContainer.style.display = 'none';
 inventoryContainer.style.gridTemplateColumns = 'repeat(4, 64px)';
 inventoryContainer.style.gridAutoRows = '64px';
 inventoryContainer.style.gap = '10px';
 inventoryContainer.style.alignItems = 'center';
 inventoryContainer.style.justifyItems = 'center';
+inventoryContainer.style.display = 'none';
+inventoryContainer.style.display = 'grid'; // define as grid but we'll override display to none
+inventoryContainer.style.display = 'none'; // final state hidden
+
+// Ensure grid template is present (we'll toggle display)
+inventoryContainer.style.gridTemplateColumns = 'repeat(4, 64px)';
+inventoryContainer.style.gridAutoRows = '64px';
+inventoryContainer.style.gap = '10px';
 
 const inventorySlots = [];
 for (let i = 0; i < state.INV_SLOTS; i++) {
@@ -836,7 +848,6 @@ export function updateAllSlotVisuals() {
 
 // ----------------- Inventory visuals & drag handlers -----------------
 function inventoryDragStartHandler(e) {
-  // 'this' may be the slot element
   const srcSlot = Number(this.dataset.index != null ? this.dataset.index : (this.parentElement && this.parentElement.dataset.index) || -1);
   const item = state.inventory[srcSlot];
   if (!item || !e.dataTransfer) { e.preventDefault(); return; }
@@ -867,13 +878,12 @@ function updateInventorySlotVisual(slotIndex) {
 
   const it = state.inventory[slotIndex];
   if (!it) {
-    // empty
     const plus = document.createElement('div');
     plus.textContent = '';
     plus.style.opacity = '0.0';
     inner.appendChild(plus);
     slotEl.draggable = false;
-    slotEl.removeEventListener('dragstart', inventoryDragStartHandler); // safe to call
+    slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
   } else {
     const icon = document.createElement('div');
     icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
@@ -882,7 +892,6 @@ function updateInventorySlotVisual(slotIndex) {
     inner.appendChild(icon);
     slotEl.title = `${it.name || 'Item'}`;
     slotEl.draggable = true;
-    // add dragstart (avoid duplicate handlers by removing first)
     slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
     slotEl.addEventListener('dragstart', inventoryDragStartHandler);
   }
@@ -915,7 +924,7 @@ export function removeItemFromInventory(slotIndex) {
   return it;
 }
 
-// Initialize visuals
+// Initialize visuals (inventory hidden until shown)
 updateInventoryVisuals();
 updateAllSlotVisuals();
 
@@ -1018,6 +1027,19 @@ updateAllSlotVisuals();
   window.addEventListener('touchend', () => { endDrag(); });
 })();
 
+// ----------------- Inventory show/hide helpers -----------------
+export function showInventory() {
+  try {
+    inventoryContainer.style.display = 'grid';
+    updateInventoryVisuals();
+  } catch (e) {}
+}
+export function hideInventory() {
+  try {
+    inventoryContainer.style.display = 'none';
+  } catch (e) {}
+}
+
 // ----------------- Export & extend state.dom with new UI pieces -----------------
 state.dom.gearButton = gearButton;
 state.dom.gearPanel = gearPanel;
@@ -1032,6 +1054,8 @@ state.dom.inventorySlots = inventorySlots;
 state.dom.addItemToInventory = addItemToInventory;
 state.dom.removeItemFromInventory = removeItemFromInventory;
 state.dom.updateInventoryVisuals = updateInventoryVisuals;
+state.dom.showInventory = showInventory;
+state.dom.hideInventory = hideInventory;
 
 // Export default convenience object (keeps previous API)
 export default {
@@ -1088,5 +1112,7 @@ export default {
   inventorySlots,
   addItemToInventory,
   removeItemFromInventory,
-  updateInventoryVisuals
+  updateInventoryVisuals,
+  showInventory,
+  hideInventory
 };

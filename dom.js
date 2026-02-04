@@ -594,20 +594,56 @@ gearButton.addEventListener('click', () => {
 export function updateSlotVisual(slotIndex) {
   const slotEl = gearSlots[slotIndex];
   if (!slotEl) return;
+
+  // Clear previous contents and inline background
   slotEl.innerHTML = '';
+  slotEl.style.backgroundImage = '';
+  slotEl.style.backgroundRepeat = '';
+  slotEl.style.backgroundPosition = '';
+  slotEl.style.backgroundSize = '';
+
   const it = state.equipment[slotIndex];
   if (!it) {
-    const plus = document.createElement('div');
-    plus.textContent = '+';
-    plus.style.opacity = '0.8';
-    slotEl.appendChild(plus);
-    slotEl.title = `Empty slot ${slotIndex+1}`;
+    // Empty slot -> show the provided gearpanel image for this slot
+    const imgPath = `assets/ui/gearpanel${slotIndex + 1}.png`;
+
+    // Use the image as background if available. Background will gracefully
+    // fall back if the file is missing (browser shows nothing).
+    slotEl.style.backgroundImage = `url('${imgPath}')`;
+    slotEl.style.backgroundRepeat = 'no-repeat';
+    slotEl.style.backgroundPosition = 'center';
+    slotEl.style.backgroundSize = 'contain';
+
+    // Also keep an accessible label/title
+    slotEl.title = `Empty slot ${slotIndex + 1}`;
+
+    // Keep a lightweight fallback visible for the very small chance the asset fails:
+    // add a low-opacity plus sign overlay so users get an affordance even if the image is missing.
+    const fallback = document.createElement('div');
+    fallback.textContent = '+';
+    fallback.style.opacity = '0.0'; // invisible by default
+    fallback.style.position = 'absolute';
+    fallback.style.pointerEvents = 'none';
+    fallback.style.fontSize = '18px';
+    fallback.style.color = '#fff';
+    slotEl.appendChild(fallback);
+
+    // Try to detect if image loads successfully; if it fails, make the fallback visible.
+    // This is best-effort and avoids a permanently invisible slot when file missing.
+    const imgCheck = new Image();
+    imgCheck.src = imgPath;
+    imgCheck.onload = () => { fallback.style.opacity = '0.0'; };
+    imgCheck.onerror = () => { fallback.style.opacity = '0.9'; };
   } else {
+    // Equipped item: clear background and show item glyph / icon and name badge
+    slotEl.style.backgroundImage = '';
     const icon = document.createElement('div');
-    icon.textContent = it.icon || it.name.charAt(0) || '?';
+    // Prefer a provided icon char or first letter, fall back to '?'
+    icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
     icon.style.fontSize = '14px';
     icon.style.pointerEvents = 'none';
     slotEl.appendChild(icon);
+
     const nameBadge = document.createElement('div');
     nameBadge.textContent = it.name || 'Item';
     nameBadge.style.position = 'absolute';
@@ -617,6 +653,7 @@ export function updateSlotVisual(slotIndex) {
     nameBadge.style.fontSize = '11px';
     nameBadge.style.opacity = '0.85';
     slotEl.appendChild(nameBadge);
+
     slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
   }
 }

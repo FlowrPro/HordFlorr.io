@@ -112,6 +112,7 @@ export function handleServerMessage(msg) {
     if (msg.player) {
       if (typeof msg.player.level === 'number') state.player.level = msg.player.level;
       if (typeof msg.player.xp === 'number') state.player.xp = msg.player.xp;
+      if (typeof msg.player.nextLevelXp === 'number') state.player.nextLevelXp = msg.player.nextLevelXp;
       if (msg.player.class) state.player.class = msg.player.class;
     }
     if (msg.mapType === 'square' || msg.mapSize || msg.mapHalf || msg.mapRadius) {
@@ -151,6 +152,7 @@ export function handleServerMessage(msg) {
         state.player.name = sp.name || state.player.name;
         if (typeof sp.level === 'number') state.player.level = sp.level;
         if (typeof sp.xp === 'number') state.player.xp = sp.xp;
+        if (typeof sp.nextLevelXp === 'number') state.player.nextLevelXp = sp.nextLevelXp;
 
         // Ensure local HP is updated from snapshot so UI can show correct values
         if (typeof sp.hp === 'number') {
@@ -332,7 +334,60 @@ export function handleServerMessage(msg) {
     const reason = msg.reason || 'rate_limit';
     appendChatMessage({ text: `Chat blocked: ${reason}`, ts: Date.now(), system: true });
   } else if (msg.t === 'player_levelup') {
-    appendChatMessage({ text: `${msg.playerName || 'Player'} leveled up to ${msg.level}! (+${msg.hpGain} HP)`, ts: Date.now(), system: true });
+    // Server informs us that a player leveled up (could be us)
+    const level = msg.level || 1;
+    const playerName = msg.playerName || 'Player';
+    const hpGain = msg.hpGain || 0;
+    appendChatMessage({ text: `${playerName} leveled up to ${level}! (+${hpGain} HP)`, ts: Date.now(), system: true });
+
+    // If it's our player, update local state immediately
+    if (state.player && playerName === state.player.name) {
+      if (typeof msg.level === 'number') state.player.level = msg.level;
+      if (typeof msg.newMaxHp === 'number') state.player.maxHp = msg.newMaxHp;
+      if (typeof msg.newHp === 'number') state.player.hp = msg.newHp;
+      if (typeof msg.xp === 'number') state.player.xp = msg.xp;
+      if (typeof msg.nextLevelXp === 'number') state.player.nextLevelXp = msg.nextLevelXp;
+      if (typeof msg.damageMul === 'number') state.player.damageMul = msg.damageMul;
+      if (typeof msg.buffDurationMul === 'number') state.player.buffDurationMul = msg.buffDurationMul;
+
+      // Visual: small levelup / xp pop
+      state.remoteEffects.push({ type: 'xp', x: state.player.x, y: state.player.y - (state.player.radius + 22), color: 'rgba(220,255,160,1)', start: Date.now(), duration: 1400, text: `Level ${state.player.level}!` });
+    }
+  } else if (msg.t === 'chat_blocked') {
+    appendChatMessage({ text: `Chat blocked: ${msg.reason||'rate_limit'}`, ts: Date.now(), system: true });
+  } else if (msg.t === 'player_healed') {
+    const pid = msg.id;
+    const amount = msg.amount || 0;
+    if (String(pid) === String(state.player.id)) {
+      const prev = Number.isFinite(state.player.hp) ? state.player.hp : 0;
+      const newHp = (typeof msg.hp === 'number') ? msg.hp : prev;
+      if (newHp > prev) {
+        state.remoteEffects.push({
+          type: 'heal',
+          x: state.player.x,
+          y: state.player.y - (state.player.radius + 12),
+          color: 'rgba(120,255,140,0.95)',
+          text: `+${amount} HP`,
+          start: Date.now(),
+          duration: 1200
+        });
+      }
+      if (typeof msg.hp === 'number') state.player.hp = msg.hp;
+    } else {
+      // show heal for other players if present
+      const rp = state.remotePlayers.get(String(pid));
+      if (rp) {
+        state.remoteEffects.push({
+          type: 'heal',
+          x: rp.displayX || rp.targetX,
+          y: (rp.displayY || rp.targetY) - ((rp.radius || 28) + 12),
+          color: 'rgba(120,255,140,0.95)',
+          text: `+${amount} HP`,
+          start: Date.now(),
+          duration: 1200
+        });
+      }
+    }
   } else if (msg.t === 'mob_died') {
     // Show immediate death visuals and award XP locally (server authoritative).
     const mid = msg.mobId;
@@ -472,40 +527,6 @@ export function handleServerMessage(msg) {
       } else {
         // fallback generic effect near center
         state.remoteEffects.push({ type: 'damage', x: state.player.x, y: state.player.y - (state.player.radius + 6), color: 'rgba(255,80,80,0.95)', text: `${Math.round(dmg)}`, start: Date.now(), duration: 1100 });
-      }
-    }
-  } else if (msg.t === 'player_healed') {
-    // server-side authoritative heal message
-    const pid = msg.id;
-    const amount = msg.amount || 0;
-    if (String(pid) === String(state.player.id)) {
-      const prev = Number.isFinite(state.player.hp) ? state.player.hp : 0;
-      const newHp = (typeof msg.hp === 'number') ? msg.hp : prev;
-      if (newHp > prev) {
-        state.remoteEffects.push({
-          type: 'heal',
-          x: state.player.x,
-          y: state.player.y - (state.player.radius + 12),
-          color: 'rgba(120,255,140,0.95)',
-          text: `+${amount} HP`,
-          start: Date.now(),
-          duration: 1200
-        });
-      }
-      if (typeof msg.hp === 'number') state.player.hp = msg.hp;
-    } else {
-      // healed other player — show small heal text near them (best effort)
-      const rp = state.remotePlayers.get(String(pid));
-      if (rp) {
-        state.remoteEffects.push({
-          type: 'heal',
-          x: rp.displayX || rp.targetX,
-          y: (rp.displayY || rp.targetY) - ((rp.radius || 28) + 12),
-          color: 'rgba(120,255,140,0.95)',
-          text: `+${amount} HP`,
-          start: Date.now(),
-          duration: 1200
-        });
       }
     }
   } else if (msg.t === 'cast_rejected') {

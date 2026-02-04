@@ -423,6 +423,31 @@ export function hideSkillTooltip() {
   skillTooltip.style.display = 'none';
 }
 
+// Helper to create an <img> element for an item with @2x fallback attempt.
+// Returns the created <img> element. It will try @2x first on DPR>=2 then fallback to base src on error.
+function createItemImageElement(it, cssFit = 'contain') {
+  const img = new Image();
+  img.style.width = '100%';
+  img.style.height = '100%';
+  img.style.objectFit = cssFit;
+  img.alt = it.name || 'item';
+  const dpr = window.devicePixelRatio || 1;
+  if (dpr >= 2) {
+    const match = String(it.img).match(/^(.*)(\.[^./]+)$/);
+    if (match) {
+      const candidate = `${match[1]}@2x${match[2]}`;
+      img.src = candidate;
+      img.onerror = () => {
+        img.onerror = null;
+        img.src = it.img;
+      };
+      return img;
+    }
+  }
+  img.src = it.img;
+  return img;
+}
+
 // ----------------- Gear UI -----------------
 // Gear button (match settings button 44x44) using supplied icon at assets/ui/gearpanel.png
 const gearButton = document.createElement('button');
@@ -698,19 +723,57 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
     if (!it || !e.dataTransfer) { e.preventDefault(); return; }
     const payload = { item: JSON.parse(JSON.stringify(it)), source: 'gear', index: idx };
     try { e.dataTransfer.setData('application/json', JSON.stringify(payload)); } catch (err) {}
+
+    // try to draw a representative drag image: prefer item.img if preloaded, otherwise glyph canvas fallback
     try {
       const dragCanvas = document.createElement('canvas');
-      dragCanvas.width = 56; dragCanvas.height = 56;
+      dragCanvas.width = 64; dragCanvas.height = 64;
       const c = dragCanvas.getContext('2d');
       c.fillStyle = 'rgba(0,0,0,0.6)';
-      c.fillRect(0,0,56,56);
+      c.fillRect(0,0,64,64);
+
+      // If item has image and it's already cached/loaded, draw it to drag image.
+      if (it.img) {
+        const img = new Image();
+        // attempt @2x if available and present already in cache
+        const dpr = window.devicePixelRatio || 1;
+        let chosen = it.img;
+        if (dpr >= 2) {
+          const m = String(it.img).match(/^(.*)(\.[^./]+)$/);
+          if (m) {
+            const cand = `${m[1]}@2x${m[2]}`;
+            // if the candidate image is in the browser cache, its complete & naturalWidth may be available synchronously
+            img.src = cand;
+            if (!img.complete) {
+              // start fallback to base
+              img.src = it.img;
+            }
+          } else {
+            img.src = it.img;
+          }
+        } else {
+          img.src = it.img;
+        }
+        if (img.complete && img.naturalWidth > 0) {
+          // draw centered with padding
+          const pad = 6;
+          c.drawImage(img, pad, pad, 64 - pad*2, 64 - pad*2);
+          e.dataTransfer.setDragImage(dragCanvas, 32, 32);
+          return;
+        }
+        // If image not ready synchronously, fall through to glyph
+      }
+
+      // glyph fallback
       c.fillStyle = '#fff';
-      c.font = '20px system-ui, Arial';
+      c.font = '32px system-ui, Arial';
       c.textAlign = 'center';
       c.textBaseline = 'middle';
-      c.fillText(it.icon || (it.name ? it.name.charAt(0) : '?'), 28, 30);
-      e.dataTransfer.setDragImage(dragCanvas, 28, 28);
-    } catch (err) {}
+      c.fillText(it.icon || (it.name ? it.name.charAt(0) : '?'), 32, 34);
+      e.dataTransfer.setDragImage(dragCanvas, 32, 32);
+    } catch (err) {
+      // ignore drag image errors
+    }
   });
 
   slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; });
@@ -798,6 +861,7 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
 gearPanel.insertBefore(slotsContainer, statsBox);
 
 // ----------------- Slot visuals & helpers -----------------
+// Updated so gear slot displays the same image as inventory when item.img is present.
 export function updateSlotVisual(slotIndex) {
   const slotEl = gearSlots[slotIndex];
   if (!slotEl) return;
@@ -815,12 +879,31 @@ export function updateSlotVisual(slotIndex) {
     slotEl.appendChild(plus);
     slotEl.title = `Empty slot ${slotIndex + 1}`;
     slotEl.draggable = false;
-  } else {
-    const icon = document.createElement('div');
-    icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
-    icon.style.fontSize = '14px';
-    icon.style.pointerEvents = 'none';
-    slotEl.appendChild(icon);
+    return;
+  }
+
+  // If item has an image path, show it here exactly like inventory
+  if (it.img && typeof it.img === 'string') {
+    const imgEl = createItemImageElement(it, 'contain');
+    // If the image errors, replace with glyph fallback
+    imgEl.addEventListener('error', () => {
+      slotEl.innerHTML = '';
+      const icon = document.createElement('div');
+      icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
+      icon.style.fontSize = '14px';
+      icon.style.pointerEvents = 'none';
+      slotEl.appendChild(icon);
+      const nameBadge = document.createElement('div');
+      nameBadge.textContent = it.name || 'Item';
+      nameBadge.style.position = 'absolute';
+      nameBadge.style.bottom = '-18px';
+      nameBadge.style.left = '50%';
+      nameBadge.style.transform = 'translateX(-50%)';
+      nameBadge.style.fontSize = '11px';
+      nameBadge.style.opacity = '0.85';
+      slotEl.appendChild(nameBadge);
+    });
+    slotEl.appendChild(imgEl);
 
     const nameBadge = document.createElement('div');
     nameBadge.textContent = it.name || 'Item';
@@ -834,7 +917,28 @@ export function updateSlotVisual(slotIndex) {
 
     slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
     slotEl.draggable = true;
+    return;
   }
+
+  // Fallback: show letter/icon
+  const icon = document.createElement('div');
+  icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
+  icon.style.fontSize = '14px';
+  icon.style.pointerEvents = 'none';
+  slotEl.appendChild(icon);
+
+  const nameBadge = document.createElement('div');
+  nameBadge.textContent = it.name || 'Item';
+  nameBadge.style.position = 'absolute';
+  nameBadge.style.bottom = '-18px';
+  nameBadge.style.left = '50%';
+  nameBadge.style.transform = 'translateX(-50%)';
+  nameBadge.style.fontSize = '11px';
+  nameBadge.style.opacity = '0.85';
+  slotEl.appendChild(nameBadge);
+
+  slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
+  slotEl.draggable = true;
 }
 
 export function updateAllSlotVisuals() {
@@ -884,37 +988,9 @@ function updateInventorySlotVisual(slotIndex) {
     return;
   }
 
-  // If item has an image path (it.img), try to show it (with @2x fallback)
+  // If item has an image path (it.img), show it (with @2x fallback)
   if (it.img && typeof it.img === 'string') {
-    // create image element and attempt to load a @2x variant first on high-DPI screens
-    const img = new Image();
-    img.style.width = '100%';
-    img.style.height = '100%';
-    img.style.objectFit = 'contain';
-    img.alt = it.name || 'item';
-    let attempted2x = false;
-    const dpr = window.devicePixelRatio || 1;
-    if (dpr >= 2) {
-      // try @2x variant: e.g. path.png -> path@2x.png
-      const match = it.img.match(/^(.*)(\.[^./]+)$/);
-      if (match) {
-        const candidate = `${match[1]}@2x${match[2]}`;
-        attempted2x = true;
-        img.src = candidate;
-        img.onload = () => { /* success with @2x */ };
-        img.onerror = () => {
-          // fallback to base
-          img.onerror = null;
-          img.src = it.img;
-        };
-      } else {
-        img.src = it.img;
-      }
-    } else {
-      img.src = it.img;
-    }
-
-    // If image fails to load at all, show fallback glyph
+    const img = createItemImageElement(it, 'contain');
     img.addEventListener('error', () => {
       inner.innerHTML = '';
       const icon = document.createElement('div');
@@ -923,11 +999,6 @@ function updateInventorySlotVisual(slotIndex) {
       icon.style.pointerEvents = 'none';
       inner.appendChild(icon);
     });
-
-    img.addEventListener('load', () => {
-      // image loaded - ensure inner is using the image only
-    });
-
     inner.appendChild(img);
     slotEl.title = `${it.name || 'Item'}`;
     slotEl.draggable = true;

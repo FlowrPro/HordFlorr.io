@@ -212,7 +212,9 @@ setComputeInputFunc(computeInputVector);
 export function castSkill(slotIndex) {
   if (slotIndex < 0 || slotIndex >= state.HOTBAR_SLOTS) return false;
   if (state.cooldowns[slotIndex] > 0) {
-    appendChatMessage({ text: `${state.CLASS_SKILLS[state.player.class][slotIndex]} is on cooldown (${Math.ceil(state.cooldowns[slotIndex])}s)`, ts: Date.now(), system: true });
+    // show transient message instead of chat
+    const name = (state.CLASS_SKILLS[state.player.class] && state.CLASS_SKILLS[state.player.class][slotIndex]) || `Slot ${slotIndex+1}`;
+    dom.showTransientMessage(`${name} is on cooldown (${Math.ceil(state.cooldowns[slotIndex])}s)`, 1400);
     return false;
   }
 
@@ -255,7 +257,8 @@ export function castSkill(slotIndex) {
   }
 
   if (!sent) {
-    appendChatMessage({ text: 'Not connected — message not sent', ts: Date.now(), system: true });
+    // show transient error
+    dom.showTransientMessage('Not connected — message not sent', 1400);
     return false;
   }
 

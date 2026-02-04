@@ -369,7 +369,7 @@ function drawWorld(vw, vh, dt) {
     }
   }
 
-  // draw any remoteEffects that are world-space (aoe, xp, heal, melee)
+  // draw any remoteEffects that are world-space (aoe, xp, heal, melee, damage)
   const now = Date.now();
   for (let i = state.remoteEffects.length - 1; i >= 0; i--) {
     const ef = state.remoteEffects[i];
@@ -398,6 +398,18 @@ function drawWorld(vw, vh, dt) {
       dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'middle';
       dom.ctx.fillStyle = ef.color || 'rgba(120,255,140,0.95)';
       dom.ctx.fillText(ef.text || '+HP', ef.x || 0, syh);
+    } else if (ef.type === 'damage') {
+      // red damage numbers float up and fade
+      const syd = (ef.y || 0) - t * 28;
+      dom.ctx.globalAlpha = 1 - Math.pow(t, 0.9);
+      dom.ctx.font = 'bold 16px system-ui, Arial';
+      dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'middle';
+      dom.ctx.fillStyle = ef.color || 'rgba(255,80,80,0.95)';
+      dom.ctx.fillText(ef.text || '0', ef.x || 0, syd);
+      // slight outline
+      dom.ctx.lineWidth = 2;
+      dom.ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+      dom.ctx.strokeText(ef.text || '0', ef.x || 0, syd);
     } else if (ef.type === 'melee') {
       const r = (ef.radius || 40) * (0.6 + 0.8 * (1 - t));
       dom.ctx.globalAlpha = 1 - t;

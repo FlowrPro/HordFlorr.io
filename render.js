@@ -29,6 +29,68 @@ resizeCanvas();
   } catch (e) {}
 })();
 
+// --- Jagged wall params (tweak these to change the 'jaggedness') ---
+const JAG_SEGMENT_LENGTH = 20; // pixels per segment along each wall edge
+const JAG_DISPLACEMENT = 10;   // max perpendicular offset in pixels
+
+// Helper: build jagged points around an input polygon (array of {x,y})
+// Returns an array of points that follow the polygon edges but with
+// pseudo-noise offsets perpendicular to each edge to create jagged edges.
+function buildJaggedPoints(polyPoints, segmentLength = JAG_SEGMENT_LENGTH, jagMag = JAG_DISPLACEMENT) {
+  if (!Array.isArray(polyPoints) || polyPoints.length < 2) return polyPoints || [];
+  const out = [];
+  for (let i = 0; i < polyPoints.length; i++) {
+    const a = polyPoints[i];
+    const b = polyPoints[(i + 1) % polyPoints.length];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const segLen = Math.hypot(dx, dy) || 1;
+    const nx = -dy / segLen; // outward normal direction candidate (perp)
+    const ny = dx / segLen;
+    const steps = Math.max(1, Math.ceil(segLen / segmentLength));
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      const px = a.x + dx * t;
+      const py = a.y + dy * t;
+      // Use pseudo noise to get a stable offset value based on world coords
+      // Scale inputs so the noise is smoothly varying
+      const noise = pseudo(px * 0.08, py * 0.08);
+      // noise runs [0,1) -> shift to [-0.5,0.5], apply jagMag
+      const offset = (noise - 0.5) * 2 * jagMag;
+      // Alternate sign a bit to avoid uniform bias by sampling a second noise
+      const alt = pseudo(px * 0.07 + 37.13, py * 0.11 + 91.7) - 0.5;
+      const finalOffset = offset * (0.8 + 0.4 * alt);
+      const jx = px + nx * finalOffset;
+      const jy = py + ny * finalOffset;
+      // For start / end points of polygon edges we avoid duplicating vertices:
+      if (i === 0 && s === 0) out.push({ x: jx, y: jy });
+      else if (s === 0) {
+        // ensure continuity by not duplicating the previous point (skip)
+        out.push({ x: jx, y: jy });
+      } else {
+        out.push({ x: jx, y: jy });
+      }
+    }
+  }
+  return out;
+}
+
+// A safe draw helper that draws a polygon from points array and fills it
+function fillPolygonWithTextureOrColor(points, textureName, fallbackColor) {
+  if (!points || points.length < 3) return;
+  const ctx = dom.ctx;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.closePath();
+  // texture pattern (if loaded)
+  const pat = getTexturePattern(textureName, ctx);
+  if (pat) ctx.fillStyle = pat;
+  else ctx.fillStyle = fallbackColor || '#6b4f3b';
+  ctx.fill();
+  ctx.stroke();
+}
+
 // --- helper: currentClientSpeed (from main.js) ---
 export function currentClientSpeed() {
   let mult = 1;
@@ -221,38 +283,27 @@ function drawWorld(vw, vh, dt) {
     dom.ctx.strokeStyle = '#2a6b2a';
     dom.ctx.strokeRect(x, y, size, size);
 
-    // draw walls (rects OR polygons)
+    // draw walls (rects OR polygons) with jagged edges
     dom.ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     dom.ctx.lineWidth = 2;
     for (const w of (state.map.walls || [])) {
-      if (w && Array.isArray(w.points)) {
-        // polygon
-        dom.ctx.beginPath();
-        for (let i = 0; i < w.points.length; i++) {
-          const pt = w.points[i];
-          if (i === 0) dom.ctx.moveTo(pt.x, pt.y);
-          else dom.ctx.lineTo(pt.x, pt.y);
-        }
-        dom.ctx.closePath();
-
-        // choose texture name (allow server to specify w.texture; fallback to our rocks011)
+      if (w && Array.isArray(w.points) && w.points.length >= 3) {
+        // polygon - build jagged points and draw that shape
+        const jagged = buildJaggedPoints(w.points, JAG_SEGMENT_LENGTH, JAG_DISPLACEMENT);
+        // world-space jagged polygon: fill with texture or fallback color
         const texName = (w && w.texture) ? w.texture : 'rocks011';
-        const pat = getTexturePattern(texName, dom.ctx);
-        if (pat) dom.ctx.fillStyle = pat;
-        else dom.ctx.fillStyle = '#6b4f3b';
-        dom.ctx.fill();
-        dom.ctx.stroke();
+        fillPolygonWithTextureOrColor(jagged, texName, '#6b4f3b');
       } else if (typeof w.x === 'number' && typeof w.w === 'number') {
-        // rectangle legacy
-        dom.ctx.beginPath();
-        dom.ctx.rect(w.x, w.y, w.w, w.h);
-
+        // rectangle legacy - convert to polygon, jag it, then draw
+        const rectPts = [
+          { x: w.x, y: w.y },
+          { x: w.x + w.w, y: w.y },
+          { x: w.x + w.w, y: w.y + w.h },
+          { x: w.x, y: w.y + w.h }
+        ];
+        const jagged = buildJaggedPoints(rectPts, JAG_SEGMENT_LENGTH, JAG_DISPLACEMENT);
         const texName = (w && w.texture) ? w.texture : 'rocks011';
-        const pat = getTexturePattern(texName, dom.ctx);
-        if (pat) dom.ctx.fillStyle = pat;
-        else dom.ctx.fillStyle = '#6b4f3b';
-        dom.ctx.fill();
-        dom.ctx.stroke();
+        fillPolygonWithTextureOrColor(jagged, texName, '#6b4f3b');
       }
     }
   }

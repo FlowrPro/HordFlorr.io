@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { roundRectScreen, pseudo, clientPointInsideWall, clampToMap } from './utils.js';
 import dom from './dom.js';
 import { getHotbarSlotUnderPointer } from './input.js'; // use the single implementation exported by input.js
-import { preloadIcons, getSkillIcon } from './icons.js';
+import { preloadTextures, getTexturePattern } from './textures.js';
 
 // --- Canvas setup (DPR aware) ---
 export function resizeCanvas() {
@@ -18,19 +18,14 @@ export function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// Preload icons manifest built from state.SKILL_META.
-// This is non-blocking for startup — we start preload but don't await.
-(function preloadSkillIcons() {
+// Preload wall textures (non-blocking). Place the chosen albedo file at:
+//   assets/textures/walls/Rocks011_1k-PNG_Color.png
+// If you prefer to use Rocks011.png, adjust the src below to that filename.
+(function preloadWallTextures() {
   try {
-    const manifest = [];
-    const meta = state.SKILL_META || {};
-    for (const cls of Object.keys(meta)) {
-      const arr = meta[cls] || [];
-      for (const m of arr) {
-        if (m && m.type) manifest.push({ class: cls, type: m.type });
-      }
-    }
-    preloadIcons(manifest).catch(() => {});
+    preloadTextures([
+      { name: 'rocks011', src: 'assets/textures/walls/Rocks011_1k-PNG_Color.png' }
+    ]).catch(() => {});
   } catch (e) {}
 })();
 
@@ -148,7 +143,9 @@ function drawHotbar(vw, vh) {
       // Try to draw image icon if available
       let drawn = false;
       try {
-        const img = getSkillIcon(state.player.class, meta.type);
+        // This will work if you have icons.js and getSkillIcon available
+        // If you don't, the try/catch ensures graceful fallback.
+        const img = (typeof getSkillIcon === 'function') ? getSkillIcon(state.player.class, meta.type) : null;
         if (img && img.complete && img.naturalWidth > 0) {
           const inset = 8;
           const iw = slotSize - 16;
@@ -225,7 +222,6 @@ function drawWorld(vw, vh, dt) {
     dom.ctx.strokeRect(x, y, size, size);
 
     // draw walls (rects OR polygons)
-    dom.ctx.fillStyle = '#6b4f3b';
     dom.ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     dom.ctx.lineWidth = 2;
     for (const w of (state.map.walls || [])) {
@@ -238,12 +234,23 @@ function drawWorld(vw, vh, dt) {
           else dom.ctx.lineTo(pt.x, pt.y);
         }
         dom.ctx.closePath();
+
+        // choose texture name (allow server to specify w.texture; fallback to our rocks011)
+        const texName = (w && w.texture) ? w.texture : 'rocks011';
+        const pat = getTexturePattern(texName, dom.ctx);
+        if (pat) dom.ctx.fillStyle = pat;
+        else dom.ctx.fillStyle = '#6b4f3b';
         dom.ctx.fill();
         dom.ctx.stroke();
       } else if (typeof w.x === 'number' && typeof w.w === 'number') {
         // rectangle legacy
         dom.ctx.beginPath();
         dom.ctx.rect(w.x, w.y, w.w, w.h);
+
+        const texName = (w && w.texture) ? w.texture : 'rocks011';
+        const pat = getTexturePattern(texName, dom.ctx);
+        if (pat) dom.ctx.fillStyle = pat;
+        else dom.ctx.fillStyle = '#6b4f3b';
         dom.ctx.fill();
         dom.ctx.stroke();
       }

@@ -215,8 +215,8 @@ export function castSkill(slotIndex) {
     appendChatMessage({ text: `${state.CLASS_SKILLS[state.player.class][slotIndex]} is on cooldown (${Math.ceil(state.cooldowns[slotIndex])}s)`, ts: Date.now(), system: true });
     return false;
   }
+
   const cd = (state.CLASS_COOLDOWNS[state.player.class] && state.CLASS_COOLDOWNS[state.player.class][slotIndex]) || 6.0;
-  state.cooldowns[slotIndex] = cd;
 
   // compute aim angle (prefer mouse position, fallback to facing)
   let aimAngle = state.player.facing;
@@ -229,10 +229,10 @@ export function castSkill(slotIndex) {
 
   const meta = (state.SKILL_META[state.player.class] && state.SKILL_META[state.player.class][slotIndex]) || null;
 
-  // For target required kinds, ensure selectedTarget exists
+  // For target required kinds, ensure selectedTarget exists — do this BEFORE applying cooldown
   const needsTarget = meta && (meta.kind === 'proj_target' || meta.kind === 'proj_target_stun' || meta.kind === 'proj_target' || meta.kind === 'proj_target_stun');
   if (needsTarget && (!state.selectedTarget || !state.selectedTarget.id)) {
-    appendChatMessage({ text: `No target selected for ${meta ? meta.name : 'skill'}`, ts: Date.now(), system: true });
+    dom.showTransientMessage(`No target selected for ${meta ? meta.name : 'skill'}`, 1400);
     return false;
   }
 
@@ -243,13 +243,25 @@ export function castSkill(slotIndex) {
     castMsg.aimY = state.mouseWorld.y;
   }
 
+  // Try to send cast to server. Only set cooldown and show local visual feedback if send succeeds.
+  let sent = false;
   try {
     if (state.ws && state.ws.readyState === WebSocket.OPEN) {
       state.ws.send(JSON.stringify(castMsg));
+      sent = true;
     }
-  } catch (e) {}
+  } catch (e) {
+    sent = false;
+  }
 
-  // local visual feedback & optimistic buff for immediate response
+  if (!sent) {
+    appendChatMessage({ text: 'Not connected — message not sent', ts: Date.now(), system: true });
+    return false;
+  }
+
+  // On successful send, set cooldown and show local visual feedback & optimistic buff
+  state.cooldowns[slotIndex] = cd;
+
   if (meta) {
     state.remoteEffects.push({
       type: meta.kind === 'melee' ? 'melee' : 'aoe',

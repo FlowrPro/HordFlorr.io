@@ -288,6 +288,11 @@ html, body {
 }
 #skillTooltip .tooltipRow { margin: 4px 0; }
 
+/* Transient popup (top-center) */
+#transientMessage {
+  z-index: 10010;
+}
+
 /* small responsive */
 @media (max-width: 480px) {
   #titleScreen > h1 { font-size: 40px; margin-top: 28px; }

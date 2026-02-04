@@ -5,6 +5,7 @@ import { roundRectScreen, pseudo, clientPointInsideWall, clampToMap } from './ut
 import dom from './dom.js';
 import { getHotbarSlotUnderPointer } from './input.js'; // use the single implementation exported by input.js
 import { preloadTextures, getTexturePattern } from './textures.js';
+import { getSkillIcon } from './icons.js'; // <-- imported so we can draw real icons when loaded
 
 // --- Canvas setup (DPR aware) ---
 export function resizeCanvas() {
@@ -32,6 +33,37 @@ resizeCanvas();
 // --- Jagged wall params (tweak these to change the 'jaggedness') ---
 const JAG_SEGMENT_LENGTH = 20; // pixels per segment along each wall edge
 const JAG_DISPLACEMENT = 10;   // max perpendicular offset in pixels
+
+// Cache for jagged walls (rebuild only when walls change)
+let jaggedWallCache = [];
+
+// Helper that rebuilds jaggedWallCache from state.map.walls
+function rebuildJaggedWallCache() {
+  jaggedWallCache = [];
+  try {
+    const walls = Array.isArray(state.map.walls) ? state.map.walls : [];
+    for (const w of walls) {
+      if (w && Array.isArray(w.points) && w.points.length >= 3) {
+        const jagged = buildJaggedPoints(w.points, JAG_SEGMENT_LENGTH, JAG_DISPLACEMENT);
+        jaggedWallCache.push({ id: w.id || null, jagged, texture: w.texture || 'rocks011' });
+      } else if (w && typeof w.x === 'number' && typeof w.w === 'number') {
+        const rectPts = [
+          { x: w.x, y: w.y },
+          { x: w.x + w.w, y: w.y },
+          { x: w.x + w.w, y: w.y + w.h },
+          { x: w.x, y: w.y + w.h }
+        ];
+        const jagged = buildJaggedPoints(rectPts, JAG_SEGMENT_LENGTH, JAG_DISPLACEMENT);
+        jaggedWallCache.push({ id: w.id || null, jagged, texture: w.texture || 'rocks011' });
+      }
+    }
+  } catch (e) {
+    jaggedWallCache = [];
+  } finally {
+    // clear the flag so we don't rebuild until next change
+    state.map._jaggedNeedsUpdate = false;
+  }
+}
 
 // Helper: build jagged points around an input polygon (array of {x,y})
 // Returns an array of points that follow the polygon edges but with
@@ -205,8 +237,6 @@ function drawHotbar(vw, vh) {
       // Try to draw image icon if available
       let drawn = false;
       try {
-        // This will work if you have icons.js and getSkillIcon available
-        // If you don't, the try/catch ensures graceful fallback.
         const img = (typeof getSkillIcon === 'function') ? getSkillIcon(state.player.class, meta.type) : null;
         if (img && img.complete && img.naturalWidth > 0) {
           const inset = 8;
@@ -255,6 +285,12 @@ function drawWorld(vw, vh, dt) {
   dom.ctx.restore();
 
   dom.ctx.save();
+
+  // Rebuild jagged wall cache only when needed
+  if (state.map._jaggedNeedsUpdate || !jaggedWallCache || !jaggedWallCache.length) {
+    rebuildJaggedWallCache();
+  }
+
   if (state.map.type === 'circle') {
     dom.ctx.beginPath();
     dom.ctx.arc(state.map.center.x, state.map.center.y, state.map.radius, 0, Math.PI * 2);
@@ -283,27 +319,13 @@ function drawWorld(vw, vh, dt) {
     dom.ctx.strokeStyle = '#2a6b2a';
     dom.ctx.strokeRect(x, y, size, size);
 
-    // draw walls (rects OR polygons) with jagged edges
+    // draw walls (use cached jagged polygons)
     dom.ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     dom.ctx.lineWidth = 2;
-    for (const w of (state.map.walls || [])) {
-      if (w && Array.isArray(w.points) && w.points.length >= 3) {
-        // polygon - build jagged points and draw that shape
-        const jagged = buildJaggedPoints(w.points, JAG_SEGMENT_LENGTH, JAG_DISPLACEMENT);
-        // world-space jagged polygon: fill with texture or fallback color
+    for (const w of (jaggedWallCache || [])) {
+      if (w && Array.isArray(w.jagged) && w.jagged.length >= 3) {
         const texName = (w && w.texture) ? w.texture : 'rocks011';
-        fillPolygonWithTextureOrColor(jagged, texName, '#6b4f3b');
-      } else if (typeof w.x === 'number' && typeof w.w === 'number') {
-        // rectangle legacy - convert to polygon, jag it, then draw
-        const rectPts = [
-          { x: w.x, y: w.y },
-          { x: w.x + w.w, y: w.y },
-          { x: w.x + w.w, y: w.y + w.h },
-          { x: w.x, y: w.y + w.h }
-        ];
-        const jagged = buildJaggedPoints(rectPts, JAG_SEGMENT_LENGTH, JAG_DISPLACEMENT);
-        const texName = (w && w.texture) ? w.texture : 'rocks011';
-        fillPolygonWithTextureOrColor(jagged, texName, '#6b4f3b');
+        fillPolygonWithTextureOrColor(w.jagged, texName, '#6b4f3b');
       }
     }
   }

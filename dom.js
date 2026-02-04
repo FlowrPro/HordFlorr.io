@@ -48,7 +48,59 @@ skillTooltip.style.color = '#fff';
 skillTooltip.style.padding = '8px';
 skillTooltip.style.borderRadius = '8px';
 skillTooltip.style.fontSize = '12px';
+skillTooltip.style.maxWidth = '220px';
 document.body.appendChild(skillTooltip);
+
+// Item tooltip (wider than skill tooltip)
+const itemTooltip = document.createElement('div');
+itemTooltip.id = 'itemTooltip';
+itemTooltip.style.position = 'fixed';
+itemTooltip.style.pointerEvents = 'none';
+itemTooltip.style.display = 'none';
+itemTooltip.style.zIndex = 10000;
+itemTooltip.style.background = 'rgba(18,18,20,0.96)';
+itemTooltip.style.color = '#fff';
+itemTooltip.style.padding = '12px';
+itemTooltip.style.borderRadius = '10px';
+itemTooltip.style.fontSize = '13px';
+itemTooltip.style.boxShadow = '0 10px 30px rgba(0,0,0,0.6)';
+itemTooltip.style.width = '320px'; // wider than skill tooltip
+itemTooltip.style.maxWidth = 'min(92vw, 360px)';
+document.body.appendChild(itemTooltip);
+
+export function showItemTooltip(it, x, y) {
+  try {
+    if (!it) return;
+    const lines = [];
+    lines.push(`<div style="font-weight:800;font-size:15px;margin-bottom:6px;">${escapeHtml(it.name || 'Item')}</div>`);
+    if (it.stats && typeof it.stats === 'object') {
+      lines.push('<div style="font-size:13px;color:#ddd;margin-bottom:6px;"><strong>Stats</strong></div>');
+      lines.push('<div style="font-size:13px;color:#fff">');
+      for (const k of Object.keys(it.stats)) {
+        const v = it.stats[k];
+        // pretty key: convert camelCase -> words
+        const pretty = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+        lines.push(`<div style="margin:2px 0;"><strong>${escapeHtml(pretty)}:</strong> ${escapeHtml(String(v))}</div>`);
+      }
+      lines.push('</div>');
+    } else {
+      lines.push('<div style="font-size:13px;color:#ddd">No stats</div>');
+    }
+    itemTooltip.innerHTML = lines.join('');
+    // position (clamp to viewport)
+    const w = Math.min(window.innerWidth - 12, 360);
+    let left = x + 12;
+    let top = y + 12;
+    if (left + w > window.innerWidth - 8) left = Math.max(8, x - w - 12);
+    itemTooltip.style.left = `${Math.max(8, left)}px`;
+    itemTooltip.style.top = `${Math.max(8, top)}px`;
+    itemTooltip.style.display = 'block';
+  } catch (e) {}
+}
+export function hideItemTooltip() { try { itemTooltip.style.display = 'none'; } catch (e) {} }
+
+document.body.appendChild(skillTooltip);
+document.body.appendChild(itemTooltip);
 
 // Transient top-center message (for non-chat notifications)
 const transientMessage = document.createElement('div');
@@ -656,12 +708,16 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
         updateInventorySlotVisual(destIdx);
         updateSlotVisual(srcSlot);
         updateAllSlotVisuals();
+        updateStatsBox();
         showTransientMessage('Swapped gear and inventory item', 1000);
       } else {
         state.inventory[destIdx] = item;
         state.unequipItem(srcSlot);
+        state.applyEquipmentBonuses();
         updateInventorySlotVisual(destIdx);
         updateSlotVisual(srcSlot);
+        updateAllSlotVisuals();
+        updateStatsBox();
         showTransientMessage('Moved to inventory', 900);
       }
     } else if (data.source === 'external') {
@@ -735,19 +791,13 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       // If item has image and it's already cached/loaded, draw it to drag image.
       if (it.img) {
         const img = new Image();
-        // attempt @2x if available and present already in cache
         const dpr = window.devicePixelRatio || 1;
-        let chosen = it.img;
         if (dpr >= 2) {
           const m = String(it.img).match(/^(.*)(\.[^./]+)$/);
           if (m) {
             const cand = `${m[1]}@2x${m[2]}`;
-            // if the candidate image is in the browser cache, its complete & naturalWidth may be available synchronously
             img.src = cand;
-            if (!img.complete) {
-              // start fallback to base
-              img.src = it.img;
-            }
+            if (!img.complete) img.src = it.img;
           } else {
             img.src = it.img;
           }
@@ -755,13 +805,11 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
           img.src = it.img;
         }
         if (img.complete && img.naturalWidth > 0) {
-          // draw centered with padding
           const pad = 6;
           c.drawImage(img, pad, pad, 64 - pad*2, 64 - pad*2);
           e.dataTransfer.setDragImage(dragCanvas, 32, 32);
           return;
         }
-        // If image not ready synchronously, fall through to glyph
       }
 
       // glyph fallback
@@ -796,8 +844,10 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       if (!existing) {
         state.equipItem(dst, item);
         state.inventory[srcInv] = null;
+        state.applyEquipmentBonuses();
         updateSlotVisual(dst);
         updateInventorySlotVisual(srcInv);
+        updateStatsBox();
         showTransientMessage(`Equipped ${item.name}`, 1000);
       } else {
         state.equipment[dst] = item;
@@ -805,6 +855,8 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
         state.applyEquipmentBonuses();
         updateSlotVisual(dst);
         updateInventorySlotVisual(srcInv);
+        updateAllSlotVisuals();
+        updateStatsBox();
         showTransientMessage('Swapped with inventory item', 1000);
       }
     } else if (data.source === 'gear') {
@@ -817,6 +869,7 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       state.applyEquipmentBonuses();
       updateSlotVisual(dst);
       updateSlotVisual(srcGear);
+      updateStatsBox();
       showTransientMessage('Swapped gear slots', 900);
     } else if (data.source === 'external') {
       const it = data.item;
@@ -824,15 +877,19 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       const existing = state.equipment[dst];
       if (!existing) {
         state.equipItem(dst, it);
+        state.applyEquipmentBonuses();
         updateSlotVisual(dst);
+        updateStatsBox();
         showTransientMessage(`Equipped ${it.name}`, 900);
       } else {
         const free = state.inventory.findIndex(s => !s);
         if (free >= 0) {
           state.inventory[free] = existing;
           state.equipItem(dst, it);
+          state.applyEquipmentBonuses();
           updateInventorySlotVisual(free);
           updateSlotVisual(dst);
+          updateStatsBox();
           showTransientMessage(`Equipped ${it.name} and moved old item to inventory`, 1200);
         } else {
           showTransientMessage('Inventory full — cannot equip', 1200);
@@ -848,7 +905,9 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
     const added = addItemToInventory(it);
     if (added >= 0) {
       state.unequipItem(idx);
+      state.applyEquipmentBonuses();
       updateSlotVisual(idx);
+      updateStatsBox();
       showTransientMessage('Unequipped to inventory', 1000);
     } else {
       showTransientMessage('Inventory full — cannot unequip', 1200);
@@ -879,13 +938,15 @@ export function updateSlotVisual(slotIndex) {
     slotEl.appendChild(plus);
     slotEl.title = `Empty slot ${slotIndex + 1}`;
     slotEl.draggable = false;
+    // remove tooltip listeners
+    slotEl.onmouseenter = null;
+    slotEl.onmouseleave = null;
     return;
   }
 
   // If item has an image path, show it here exactly like inventory
   if (it.img && typeof it.img === 'string') {
     const imgEl = createItemImageElement(it, 'contain');
-    // If the image errors, replace with glyph fallback
     imgEl.addEventListener('error', () => {
       slotEl.innerHTML = '';
       const icon = document.createElement('div');
@@ -917,6 +978,11 @@ export function updateSlotVisual(slotIndex) {
 
     slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
     slotEl.draggable = true;
+
+    // tooltip on hover
+    slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
+    slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
+    slotEl.onmouseleave = () => { hideItemTooltip(); };
     return;
   }
 
@@ -939,6 +1005,11 @@ export function updateSlotVisual(slotIndex) {
 
   slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
   slotEl.draggable = true;
+
+  // tooltip on hover
+  slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
+  slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
+  slotEl.onmouseleave = () => { hideItemTooltip(); };
 }
 
 export function updateAllSlotVisuals() {
@@ -985,6 +1056,9 @@ function updateInventorySlotVisual(slotIndex) {
     inner.appendChild(plus);
     slotEl.draggable = false;
     slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
+    slotEl.onmouseenter = null;
+    slotEl.onmouseleave = null;
+    slotEl.onmousemove = null;
     return;
   }
 
@@ -1002,8 +1076,13 @@ function updateInventorySlotVisual(slotIndex) {
     inner.appendChild(img);
     slotEl.title = `${it.name || 'Item'}`;
     slotEl.draggable = true;
+    // attach drag handler
     slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
     slotEl.addEventListener('dragstart', inventoryDragStartHandler);
+    // tooltip
+    slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
+    slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
+    slotEl.onmouseleave = () => { hideItemTooltip(); };
     return;
   }
 
@@ -1017,6 +1096,9 @@ function updateInventorySlotVisual(slotIndex) {
   slotEl.draggable = true;
   slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
   slotEl.addEventListener('dragstart', inventoryDragStartHandler);
+  slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
+  slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
+  slotEl.onmouseleave = () => { hideItemTooltip(); };
 }
 
 function updateInventoryVisuals() {

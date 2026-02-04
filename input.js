@@ -43,8 +43,16 @@ export function initInputHandlers() {
     const vw = state.dom.canvas.width / (window.devicePixelRatio || 1);
     const vh = state.dom.canvas.height / (window.devicePixelRatio || 1);
     state.pointer.x = e.clientX; state.pointer.y = e.clientY;
-    state.mouseWorld.x = state.player.x + (state.pointer.x - vw / 2);
-    state.mouseWorld.y = state.player.y + (state.pointer.y - vh / 2);
+    // guard: if player is awaiting respawn, don't update mouseWorld (avoid NaN issues)
+    if (state.player && state.player.awaitingRespawn) {
+      // still update pointer so UI tooltips can work, but mouseWorld remains the last known or zero
+      try {
+        // keep previous mouseWorld if present
+      } catch (e) {}
+    } else {
+      state.mouseWorld.x = state.player.x + (state.pointer.x - vw / 2);
+      state.mouseWorld.y = state.player.y + (state.pointer.y - vh / 2);
+    }
 
     // detect hotbar hover and show tooltip
     const hovered = getHotbarSlotUnderPointer(e.clientX, e.clientY, vw, vh);
@@ -177,7 +185,10 @@ export function findEntityUnderPoint(wx, wy) {
 
 // computeInputVector (copied with minimal changes, using state.settings)
 export function computeInputVector() {
+  // If chat focused or player is dead/awaiting respawn, do not move
   if (state.chatFocused) return { x: 0, y: 0 };
+  if (state.player && (state.player.awaitingRespawn || (typeof state.player.hp === 'number' && state.player.hp <= 0))) return { x: 0, y: 0 };
+
   if (state.settings.keyboardMovement) {
     let ax = 0, ay = 0;
     if (state.keys['arrowup'] || state.keys['w']) ay -= 1;
@@ -211,6 +222,12 @@ setComputeInputFunc(computeInputVector);
 // --- Casting (client-side) ---
 export function castSkill(slotIndex) {
   if (slotIndex < 0 || slotIndex >= state.HOTBAR_SLOTS) return false;
+  // Prevent casting while dead/awaiting respawn
+  if (state.player && (state.player.awaitingRespawn || (typeof state.player.hp === 'number' && state.player.hp <= 0))) {
+    try { dom.showTransientMessage('Cannot act while dead', 1100); } catch (e) {}
+    return false;
+  }
+
   if (state.cooldowns[slotIndex] > 0) {
     // show transient message instead of chat
     const name = (state.CLASS_SKILLS[state.player.class] && state.CLASS_SKILLS[state.player.class][slotIndex]) || `Slot ${slotIndex+1}`;

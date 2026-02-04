@@ -2,7 +2,7 @@
 // All logic preserved from original main.js; adapted to use the shared state and dom helpers.
 
 import { state } from './state.js';
-import dom, { appendChatMessage, setLoadingText, cleanupAfterFailedLoad } from './dom.js';
+import dom, { appendChatMessage, setLoadingText, cleanupAfterFailedLoad, showDeathOverlay } from './dom.js';
 
 let ws = null; // will mirror state.ws
 let sendInputInterval = null;
@@ -142,6 +142,13 @@ export function handleServerMessage(msg) {
       const id = String(sp.id);
       seen.add(id);
       if (id === state.player.id) {
+        // If we're purposely awaiting a manual respawn, ignore snapshot updates for our local player so we
+        // don't immediately re-appear. The death UI controls when we allow snapshots to update the client.
+        if (state.player && state.player.awaitingRespawn) {
+          // still mark as seen so remotePlayers cleanup works correctly
+          continue;
+        }
+
         state.player.serverX = sp.x; state.player.serverY = sp.y;
         const dx = state.player.serverX - state.player.x; const dy = state.player.serverY - state.player.y;
         const dist = Math.hypot(dx, dy);
@@ -511,6 +518,25 @@ export function handleServerMessage(msg) {
             }
           }
         }
+      }
+    }
+  } else if (msg.t === 'player_died') {
+    // The server informs that a player died. If it's our player, show the death overlay
+    // and stop applying server snapshots to the local player until the user respawns.
+    const pid = msg.id || null;
+    if (String(pid) === String(state.player.id)) {
+      // mark awaiting respawn and dead
+      state.player.awaitingRespawn = true;
+      state.player.dead = true;
+      // ensure hp is 0 locally
+      state.player.hp = 0;
+      // visually hide player (radius backup handled by dom.showDeathOverlay)
+      showDeathOverlay();
+    } else {
+      // mark remote player's death visually (best-effort)
+      const rp = state.remotePlayers.get(String(pid));
+      if (rp) {
+        rp.dead = true;
       }
     }
   }

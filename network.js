@@ -4,6 +4,9 @@
 import { state } from './state.js';
 import dom, { appendChatMessage, setLoadingText, cleanupAfterFailedLoad, showDeathOverlay } from './dom.js';
 
+// Set to true to re-enable the verbose WS logs (useful for debugging)
+const VERBOSE_NETWORK = false;
+
 let ws = null; // will mirror state.ws
 let sendInputInterval = null;
 let seq = 0;
@@ -21,7 +24,7 @@ export function connectToServer() {
   state.welcomeReceived = false;
   state.gotFirstSnapshot = false;
   setLoadingText('Connecting…');
-  console.log('CONNECTING ->', state.SERVER_URL);
+  if (VERBOSE_NETWORK) console.log('CONNECTING ->', state.SERVER_URL);
   try {
     ws = new WebSocket(state.SERVER_URL);
   } catch (err) {
@@ -33,13 +36,13 @@ export function connectToServer() {
   state.ws = ws;
 
   ws.addEventListener('open', () => {
-    console.log('WS OPEN');
+    if (VERBOSE_NETWORK) console.log('WS OPEN');
     setLoadingText('Connected — joining…');
     const name = state.player.name || (state.dom.usernameInput && state.dom.usernameInput.value.trim() ? state.dom.usernameInput.value.trim() : 'Player');
     state.player.name = name;
     try {
       ws.send(JSON.stringify({ t: 'join', name, class: state.player.class }));
-      console.log('WS SENT: join', { name: state.player.name, class: state.player.class });
+      if (VERBOSE_NETWORK) console.log('WS SENT: join', { name: state.player.name, class: state.player.class });
       setLoadingText('Joining…');
     } catch (e) {
       console.warn('WS send(join) failed', e);
@@ -54,8 +57,10 @@ export function connectToServer() {
   ws.addEventListener('message', (ev) => {
     try {
       const msg = JSON.parse(ev.data);
-      if (msg && msg.t) console.log('WS MESSAGE t=', msg.t, msg);
-      else console.log('WS MESSAGE (raw)', msg);
+      if (VERBOSE_NETWORK) {
+        if (msg && msg.t) console.log('WS MESSAGE t=', msg.t, msg);
+        else console.log('WS MESSAGE (raw)', msg);
+      }
       handleServerMessage(msg);
     } catch (e) {
       console.log('WS message parse error', e);
@@ -63,7 +68,7 @@ export function connectToServer() {
   });
 
   ws.addEventListener('close', (ev) => {
-    console.log('WS CLOSE code=', ev.code, 'reason=', ev.reason);
+    if (VERBOSE_NETWORK) console.log('WS CLOSE code=', ev.code, 'reason=', ev.reason);
     if (state.isLoading) {
       setLoadingText('Disconnected: ' + (ev.reason || ('code ' + ev.code)));
       cleanupAfterFailedLoad('ws_close_during_load:' + (ev.reason || ev.code));
@@ -107,7 +112,7 @@ function computeInputVector() {
 export function handleServerMessage(msg) {
   if (!msg || !msg.t) return;
   if (msg.t === 'welcome') {
-    console.log('GOT welcome from server');
+    if (VERBOSE_NETWORK) console.log('GOT welcome from server');
     if (msg.id) state.player.id = String(msg.id);
     if (msg.player) {
       if (typeof msg.player.level === 'number') state.player.level = msg.player.level;
@@ -129,7 +134,7 @@ export function handleServerMessage(msg) {
     if (typeof msg.spawnX === 'number' && typeof msg.spawnY === 'number') {
       state.player.x = msg.spawnX; state.player.y = msg.spawnY;
     }
-    console.log('Server welcome. my id =', state.player.id, 'mapType=', state.map.type, 'mapHalf/mapRadius=', state.map.half || state.map.radius, 'tickRate=', msg.tickRate);
+    if (VERBOSE_NETWORK) console.log('Server welcome. my id =', state.player.id, 'mapType=', state.map.type, 'mapHalf/mapRadius=', state.map.half || state.map.radius, 'tickRate=', msg.tickRate);
     state.welcomeReceived = true;
     setLoadingText('Welcome received — loading world…');
 
@@ -149,19 +154,6 @@ export function handleServerMessage(msg) {
           continue;
         }
 
-        // detect local hp change for death: if server snapshot reports hp <= 0 for our player,
-        // and we're not already awaiting respawn, mark awaitingRespawn and show overlay.
-        const prevHp = (typeof state.player.hp === 'number') ? state.player.hp : null;
-        if (typeof sp.hp === 'number' && sp.hp <= 0 && !state.player.awaitingRespawn) {
-          // mark awaiting respawn and dead and show overlay
-          state.player.awaitingRespawn = true;
-          state.player.dead = true;
-          state.player.hp = 0;
-          try { showDeathOverlay(); } catch (e) {}
-          // continue; we intentionally do not apply further snapshot updates to our player while awaitingRespawn
-          continue;
-        }
-
         state.player.serverX = sp.x; state.player.serverY = sp.y;
         const dx = state.player.serverX - state.player.x; const dy = state.player.serverY - state.player.y;
         const dist = Math.hypot(dx, dy);
@@ -175,27 +167,27 @@ export function handleServerMessage(msg) {
 
         // Ensure local HP is updated from snapshot so UI can show correct values
         if (typeof sp.hp === 'number') {
-          const prevHp2 = Number.isFinite(state.player.hp) ? state.player.hp : 0;
+          const prevHp = Number.isFinite(state.player.hp) ? state.player.hp : 0;
           const newHp = sp.hp;
-          if (newHp > prevHp2) {
+          if (newHp > prevHp) {
             // show heal UI
             state.remoteEffects.push({
               type: 'heal',
               x: state.player.x,
               y: state.player.y - (state.player.radius + 12),
               color: 'rgba(120,255,140,0.95)',
-              text: `+${newHp - prevHp2} HP`,
+              text: `+${newHp - prevHp} HP`,
               start: Date.now(),
               duration: 1200
             });
-          } else if (newHp < prevHp2) {
+          } else if (newHp < prevHp) {
             // show damage number (from authoritative snapshot)
             state.remoteEffects.push({
               type: 'damage',
               x: state.player.x,
               y: state.player.y - (state.player.radius + 6),
               color: 'rgba(255,80,80,0.95)',
-              text: `${prevHp2 - newHp}`,
+              text: `${prevHp - newHp}`,
               start: Date.now(),
               duration: 1100
             });
@@ -320,7 +312,7 @@ export function handleServerMessage(msg) {
     }
 
     if (!state.gotFirstSnapshot) {
-      console.log('GOT FIRST SNAPSHOT -> marking ready');
+      if (VERBOSE_NETWORK) console.log('GOT FIRST SNAPSHOT -> marking ready');
       state.gotFirstSnapshot = true;
       if (state.loadingTimeout) { clearTimeout(state.loadingTimeout); state.loadingTimeout = null; }
       setLoadingText('Ready');
@@ -544,7 +536,7 @@ export function handleServerMessage(msg) {
       // ensure hp is 0 locally
       state.player.hp = 0;
       // visually hide player (radius backup handled by dom.showDeathOverlay)
-      try { showDeathOverlay(); } catch (e) {}
+      showDeathOverlay();
     } else {
       // mark remote player's death visually (best-effort)
       const rp = state.remotePlayers.get(String(pid));

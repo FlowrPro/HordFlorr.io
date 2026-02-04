@@ -2,7 +2,7 @@
 // All logic preserved from original main.js; adapted to use the shared state and dom helpers.
 
 import { state } from './state.js';
-import dom, { appendChatMessage, setLoadingText, cleanupAfterFailedLoad, showDeathOverlay } from './dom.js';
+import dom, { appendChatMessage, setLoadingText, cleanupAfterFailedLoad, showDeathOverlay, showReconnectOverlay, hideReconnectOverlay, setReconnectCancelCallback } from './dom.js';
 
 // Set to true to re-enable the verbose WS logs (useful for debugging)
 const VERBOSE_NETWORK = false;
@@ -11,10 +11,24 @@ let ws = null; // will mirror state.ws
 let sendInputInterval = null;
 let seq = 0;
 
+// Reconnect helpers
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+let reconnectCountdownTimer = null;
+let reconnectCancelled = false;
+let nextReconnectDelay = 1000;
+const RECONNECT_BASE = 1000;
+const RECONNECT_MULT = 2;
+const RECONNECT_MAX = 30000;
+
 // loading/connection lifecycle state mirrors state fields
 // state.isLoading, state.loadingTimeout, state.welcomeReceived, state.gotFirstSnapshot
 
 export function connectToServer() {
+  // If a reconnect attempt is in progress and user intentionally requested connect,
+  // clear pending reconnect state so we don't race timers.
+  stopReconnect();
+
   if (!state.SERVER_URL) {
     console.warn('CONNECTING -> no SERVER_URL configured');
     setLoadingText('No server URL set');
@@ -31,12 +45,17 @@ export function connectToServer() {
     console.warn('Failed to create WebSocket', err);
     setLoadingText('Connection failed (exception creating WebSocket)');
     cleanupAfterFailedLoad('ws_create_exception');
+    // start reconnect attempts if appropriate
+    startReconnect();
     return;
   }
   state.ws = ws;
 
   ws.addEventListener('open', () => {
     if (VERBOSE_NETWORK) console.log('WS OPEN');
+    // Cancel any reconnect UI/timers when we successfully open
+    stopReconnect();
+
     setLoadingText('Connected — joining…');
     const name = state.player.name || (state.dom.usernameInput && state.dom.usernameInput.value.trim() ? state.dom.usernameInput.value.trim() : 'Player');
     state.player.name = name;
@@ -82,6 +101,14 @@ export function connectToServer() {
     ws = null;
     // clear local handle as well if present
     if (sendInputInterval) { clearInterval(sendInputInterval); sendInputInterval = null; }
+
+    // Start auto-reconnect unless the user cancelled it
+    if (!reconnectCancelled) {
+      startReconnect();
+    } else {
+      // If reconnect was cancelled by user, ensure UI is hidden
+      hideReconnectOverlay();
+    }
   });
 
   ws.addEventListener('error', (err) => {
@@ -92,6 +119,7 @@ export function connectToServer() {
     } else {
       setLoadingText('Connection error');
     }
+    // Do not immediately start reconnect here; wait for close event for consistent flow
   });
 }
 
@@ -110,6 +138,61 @@ export function setComputeInputFunc(fn) {
 function computeInputVector() {
   return (typeof state.computeInputVector === 'function') ? state.computeInputVector() : { x: 0, y: 0 };
 }
+
+// Auto-reconnect implementation ------------------------------------------------
+function startReconnect() {
+  // if already connecting or cancelled, no-op
+  if (reconnectTimer || reconnectCancelled) return;
+  reconnectAttempts = Math.max(1, reconnectAttempts + 1);
+  const delay = Math.min(RECONNECT_BASE * Math.pow(RECONNECT_MULT, reconnectAttempts - 1), RECONNECT_MAX);
+  nextReconnectDelay = delay;
+
+  // show UI and countdown
+  let remaining = Math.ceil(delay / 1000);
+  const attemptNumber = reconnectAttempts;
+  showReconnectOverlay(`Disconnected — attempting to reconnect in ${remaining}s (attempt ${attemptNumber})`);
+  // update message every second
+  reconnectCountdownTimer = setInterval(() => {
+    remaining = Math.max(0, remaining - 1);
+    showReconnectOverlay(`Disconnected — attempting to reconnect in ${remaining}s (attempt ${attemptNumber})`);
+  }, 1000);
+
+  reconnectTimer = setTimeout(() => {
+    // clear countdown
+    if (reconnectCountdownTimer) { clearInterval(reconnectCountdownTimer); reconnectCountdownTimer = null; }
+    reconnectTimer = null;
+    if (reconnectCancelled) {
+      hideReconnectOverlay();
+      return;
+    }
+    // Try to connect. connectToServer will clear reconnect state on success.
+    try {
+      connectToServer();
+    } catch (e) {
+      // If connectToServer throws synchronously, schedule next attempt
+      startReconnect();
+    }
+    // If connect attempt fails and triggers close, startReconnect will run again from close handler.
+  }, delay);
+}
+
+function stopReconnect() {
+  reconnectAttempts = 0;
+  reconnectCancelled = false;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (reconnectCountdownTimer) { clearInterval(reconnectCountdownTimer); reconnectCountdownTimer = null; }
+  hideReconnectOverlay();
+}
+
+function cancelReconnect() {
+  reconnectCancelled = true;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  if (reconnectCountdownTimer) { clearInterval(reconnectCountdownTimer); reconnectCountdownTimer = null; }
+  hideReconnectOverlay();
+}
+
+// Wire cancel callback into DOM so the "Cancel" button works
+try { setReconnectCancelCallback(cancelReconnect); } catch (e) {}
 
 // Handle server messages (logic preserved)
 export function handleServerMessage(msg) {
@@ -447,7 +530,7 @@ export function handleServerMessage(msg) {
           duration: 1100
         });
       } else {
-        state.remoteEffects.push({ type: 'aoe', x: state.player.x, y: state.player.y, radius: 24, color: 'rgba(255,80,80,0.9)', start: Date.now(), duration: 350 });
+        state.remoteEffects.push({ type: 'aoe', x: state.player.x, y: state.player.y - (state.player.radius + 6), radius: 24, color: 'rgba(255,80,80,0.9)', start: Date.now(), duration: 350 });
       }
       if (typeof msg.hp === 'number') state.player.hp = msg.hp;
     } else {
@@ -584,3 +667,9 @@ export function setSendInputIntervalHandle(handle) {
 // Provide setter for ws (for tests or future use)
 export function getWs() { return state.ws; }
 export function setWs(w) { state.ws = w; ws = w; }
+
+// Cleanup exported for external control
+export function cancelReconnectAndHideUI() {
+  cancelReconnect();
+  hideReconnectOverlay();
+}

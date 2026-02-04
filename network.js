@@ -112,7 +112,6 @@ export function handleServerMessage(msg) {
     if (msg.player) {
       if (typeof msg.player.level === 'number') state.player.level = msg.player.level;
       if (typeof msg.player.xp === 'number') state.player.xp = msg.player.xp;
-      if (typeof msg.player.nextLevelXp === 'number') state.player.nextLevelXp = msg.player.nextLevelXp;
       if (msg.player.class) state.player.class = msg.player.class;
     }
     if (msg.mapType === 'square' || msg.mapSize || msg.mapHalf || msg.mapRadius) {
@@ -334,60 +333,7 @@ export function handleServerMessage(msg) {
     const reason = msg.reason || 'rate_limit';
     appendChatMessage({ text: `Chat blocked: ${reason}`, ts: Date.now(), system: true });
   } else if (msg.t === 'player_levelup') {
-    // Server informs us that a player leveled up (could be us)
-    const level = msg.level || 1;
-    const playerName = msg.playerName || 'Player';
-    const hpGain = msg.hpGain || 0;
-    appendChatMessage({ text: `${playerName} leveled up to ${level}! (+${hpGain} HP)`, ts: Date.now(), system: true });
-
-    // If it's our player, update local state immediately
-    if (state.player && playerName === state.player.name) {
-      if (typeof msg.level === 'number') state.player.level = msg.level;
-      if (typeof msg.newMaxHp === 'number') state.player.maxHp = msg.newMaxHp;
-      if (typeof msg.newHp === 'number') state.player.hp = msg.newHp;
-      if (typeof msg.xp === 'number') state.player.xp = msg.xp;
-      if (typeof msg.nextLevelXp === 'number') state.player.nextLevelXp = msg.nextLevelXp;
-      if (typeof msg.damageMul === 'number') state.player.damageMul = msg.damageMul;
-      if (typeof msg.buffDurationMul === 'number') state.player.buffDurationMul = msg.buffDurationMul;
-
-      // Visual: small levelup / xp pop
-      state.remoteEffects.push({ type: 'xp', x: state.player.x, y: state.player.y - (state.player.radius + 22), color: 'rgba(220,255,160,1)', start: Date.now(), duration: 1400, text: `Level ${state.player.level}!` });
-    }
-  } else if (msg.t === 'chat_blocked') {
-    appendChatMessage({ text: `Chat blocked: ${msg.reason||'rate_limit'}`, ts: Date.now(), system: true });
-  } else if (msg.t === 'player_healed') {
-    const pid = msg.id;
-    const amount = msg.amount || 0;
-    if (String(pid) === String(state.player.id)) {
-      const prev = Number.isFinite(state.player.hp) ? state.player.hp : 0;
-      const newHp = (typeof msg.hp === 'number') ? msg.hp : prev;
-      if (newHp > prev) {
-        state.remoteEffects.push({
-          type: 'heal',
-          x: state.player.x,
-          y: state.player.y - (state.player.radius + 12),
-          color: 'rgba(120,255,140,0.95)',
-          text: `+${amount} HP`,
-          start: Date.now(),
-          duration: 1200
-        });
-      }
-      if (typeof msg.hp === 'number') state.player.hp = msg.hp;
-    } else {
-      // show heal for other players if present
-      const rp = state.remotePlayers.get(String(pid));
-      if (rp) {
-        state.remoteEffects.push({
-          type: 'heal',
-          x: rp.displayX || rp.targetX,
-          y: (rp.displayY || rp.targetY) - ((rp.radius || 28) + 12),
-          color: 'rgba(120,255,140,0.95)',
-          text: `+${amount} HP`,
-          start: Date.now(),
-          duration: 1200
-        });
-      }
-    }
+    appendChatMessage({ text: `${msg.playerName || 'Player'} leveled up to ${msg.level}! (+${msg.hpGain} HP)`, ts: Date.now(), system: true });
   } else if (msg.t === 'mob_died') {
     // Show immediate death visuals and award XP locally (server authoritative).
     const mid = msg.mobId;
@@ -411,33 +357,6 @@ export function handleServerMessage(msg) {
         const rm = state.remoteMobs.get(mid);
         state.remoteEffects.push({ type: 'aoe', x: rm.targetX || rm.displayX, y: rm.targetY || rm.displayY, radius: 28, color: 'rgba(200,200,200,0.9)', start: Date.now(), duration: 700 });
       }
-    }
-  } else if (msg.t === 'mob_hurt') {
-    // show damage number at mob
-    const mid = msg.mobId;
-    const dmg = msg.damage || 0;
-    const newHp = (typeof msg.hp === 'number') ? msg.hp : null;
-    if (mid && state.remoteMobs.has(mid)) {
-      const rm = state.remoteMobs.get(mid);
-      if (rm) {
-        // show damage number
-        state.remoteEffects.push({
-          type: 'damage',
-          x: rm.displayX || rm.targetX,
-          y: (rm.displayY || rm.targetY) - ((rm.radius || 18) + 6),
-          color: 'rgba(255,80,80,0.95)',
-          text: `${Math.round(dmg)}`,
-          start: Date.now(),
-          duration: 1100
-        });
-        if (typeof newHp === 'number') {
-          rm.hp = newHp;
-          if (rm.hp <= 0) { rm.dead = true; rm.alpha = 1.0; }
-        }
-      }
-    } else {
-      // still push a generic damage effect near player if we can't find mob coords
-      state.remoteEffects.push({ type: 'damage', x: state.player.x, y: state.player.y - (state.player.radius + 6), color: 'rgba(255,80,80,0.95)', text: `${Math.round(dmg)}`, start: Date.now(), duration: 1100 });
     }
   } else if (msg.t === 'cast_effect') {
     // Server sent an effect (aoe/melee/buff) — show visual effect
@@ -529,9 +448,71 @@ export function handleServerMessage(msg) {
         state.remoteEffects.push({ type: 'damage', x: state.player.x, y: state.player.y - (state.player.radius + 6), color: 'rgba(255,80,80,0.95)', text: `${Math.round(dmg)}`, start: Date.now(), duration: 1100 });
       }
     }
+  } else if (msg.t === 'player_healed') {
+    // server-side authoritative heal message
+    const pid = msg.id;
+    const amount = msg.amount || 0;
+    if (String(pid) === String(state.player.id)) {
+      const prev = Number.isFinite(state.player.hp) ? state.player.hp : 0;
+      const newHp = (typeof msg.hp === 'number') ? msg.hp : prev;
+      if (newHp > prev) {
+        state.remoteEffects.push({
+          type: 'heal',
+          x: state.player.x,
+          y: state.player.y - (state.player.radius + 12),
+          color: 'rgba(120,255,140,0.95)',
+          text: `+${amount} HP`,
+          start: Date.now(),
+          duration: 1200
+        });
+      }
+      if (typeof msg.hp === 'number') state.player.hp = msg.hp;
+    } else {
+      // healed other player — show small heal text near them (best effort)
+      const rp = state.remotePlayers.get(String(pid));
+      if (rp) {
+        state.remoteEffects.push({
+          type: 'heal',
+          x: rp.displayX || rp.targetX,
+          y: (rp.displayY || rp.targetY) - ((rp.radius || 28) + 12),
+          color: 'rgba(120,255,140,0.95)',
+          text: `+${amount} HP`,
+          start: Date.now(),
+          duration: 1200
+        });
+      }
+    }
   } else if (msg.t === 'cast_rejected') {
-    // server rejected a cast (cooldown, no_target, etc)
-    if (msg.reason) appendChatMessage({ text: `Cast rejected: ${msg.reason}`, ts: Date.now(), system: true });
+    // server rejected a cast (cooldown, no_target, invalid_target, etc)
+    const reason = msg.reason || 'rejected';
+    // Show transient popup instead of chat
+    dom.showTransientMessage(`Cast rejected: ${reason}`, 1500);
+
+    // If server included a slot, and the rejection is due to invalid target / no_target,
+    // clear the client's cooldown so it behaves as if the cast never happened.
+    if (typeof msg.slot === 'number') {
+      const slot = Number(msg.slot) - 1;
+      const shouldClear = (reason === 'no_target' || reason === 'invalid_target' || reason === 'invalid_target' || reason === 'no_target');
+      if (shouldClear && slot >= 0 && slot < state.cooldowns.length) {
+        // clear the cooldown
+        state.cooldowns[slot] = 0;
+        // also remove any very-recent local visual effect that matches the player's location
+        const now = Date.now();
+        for (let i = state.remoteEffects.length - 1; i >= 0; i--) {
+          const ef = state.remoteEffects[i];
+          if (!ef || !ef.start) continue;
+          const age = now - ef.start;
+          // remove effects created within the last 2 seconds near the player and of types likely from an attempted cast
+          if (age < 2000 && (ef.type === 'aoe' || ef.type === 'melee')) {
+            const dx = (ef.x || 0) - (state.player.x || 0);
+            const dy = (ef.y || 0) - (state.player.y || 0);
+            if (Math.hypot(dx, dy) < 120) {
+              state.remoteEffects.splice(i, 1);
+            }
+          }
+        }
+      }
+    }
   }
 }
 

@@ -29,7 +29,8 @@ export function currentClientSpeed() {
 // --- Drawing helpers: HP/XP placement & Hotbar with icons ---
 function drawXpBarAt(x, y, barW, barH) {
   const padding = 3;
-  const nextNeeded = Math.max(50, state.player.level * 100);
+  // Use server-provided nextLevelXp if available; fallback to old formula
+  const nextNeeded = Math.max(50, (typeof state.player.nextLevelXp === 'number' ? state.player.nextLevelXp : (state.player.level * 100)));
   const pct = nextNeeded > 0 ? Math.min(1, (state.player.xp || 0) / nextNeeded) : 0;
   dom.ctx.save();
   dom.ctx.globalAlpha = 0.95;

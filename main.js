@@ -7,6 +7,7 @@ import * as utils from './utils.js';
 import * as network from './network.js';
 import * as input from './input.js';
 import * as render from './render.js';
+import { preloadIcons } from './icons.js'; // preload hotbar icons
 
 // Attach canvas/context to local variables for ease of use
 const canvas = state.dom.canvas;
@@ -23,6 +24,18 @@ if (state.dom.showCoordinatesCheckbox) state.dom.showCoordinatesCheckbox.checked
 function saveSettingsWrapper() {
   saveSettings();
 }
+
+// Preload skill icons (non-blocking) to improve hotbar visuals.
+// Build a manifest from SKILL_META so we preload the icon files you're most likely to use.
+try {
+  const iconManifest = [];
+  for (const cls in state.SKILL_META) {
+    const arr = state.SKILL_META[cls] || [];
+    for (const m of arr) if (m && m.type) iconManifest.push({ class: cls, type: m.type });
+  }
+  // call preloadIcons with manifest (returns a Promise)
+  preloadIcons(iconManifest).catch(() => {});
+} catch (e) { /* ignore */ }
 
 // --- Title / login / settings UI wiring ---
 const savedName = localStorage.getItem('moborr_username');

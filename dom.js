@@ -97,7 +97,9 @@ const deathOverlay = document.createElement('div');
 deathOverlay.id = 'deathOverlay';
 deathOverlay.style.position = 'fixed';
 deathOverlay.style.inset = '0';
+// keep it hidden and non-interactive until explicitly shown
 deathOverlay.style.display = 'none';
+deathOverlay.style.visibility = 'hidden';
 deathOverlay.style.zIndex = 10050;
 deathOverlay.style.background = 'rgba(20,20,22,0.6)';
 deathOverlay.style.backdropFilter = 'grayscale(40%) blur(2px)';
@@ -106,7 +108,6 @@ deathOverlay.style.alignItems = 'center';
 deathOverlay.style.justifyContent = 'center';
 deathOverlay.style.pointerEvents = 'auto';
 deathOverlay.style.flexDirection = 'column';
-deathOverlay.style.display = 'none';
 deathOverlay.style.gap = '18px';
 deathOverlay.style.padding = '20px';
 deathOverlay.style.boxSizing = 'border-box';
@@ -175,17 +176,22 @@ document.body.appendChild(deathOverlay);
 
 export function showDeathOverlay() {
   if (!deathOverlay) return;
+  // Safety guard: only show overlay if we have a player and have completed welcome/initialization.
+  // This prevents the overlay appearing immediately on a fresh page load (before joining).
+  if (!state.player || !state.player.id || !state.welcomeReceived) return;
+
   // hide transient tooltip/popups
   hideTransientMessage();
   if (state.dom && state.dom.skillTooltip) state.dom.skillTooltip.style.display = 'none';
   // backup radius and hide player visually by setting radius to 0 (renderers that draw by radius
   // will not show the player). We keep the backup on state.player._radiusBackup to restore later.
   try {
-    if (state.player && !state.player._radiusBackup) {
+    if (state.player && state.player._radiusBackup === undefined) {
       state.player._radiusBackup = state.player.radius;
       state.player.radius = 0;
     }
   } catch (e) {}
+  deathOverlay.style.visibility = 'visible';
   deathOverlay.style.display = 'flex';
   // ensure canvas doesn't receive input while dead unless overlay is dismissed
   try { state.dom.canvas.tabIndex = -1; } catch (e) {}
@@ -194,6 +200,7 @@ export function showDeathOverlay() {
 export function hideDeathOverlay() {
   if (!deathOverlay) return;
   deathOverlay.style.display = 'none';
+  deathOverlay.style.visibility = 'hidden';
   try { state.dom.canvas.tabIndex = 0; } catch (e) {}
 }
 

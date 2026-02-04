@@ -39,7 +39,11 @@ export const state = (function(){
     stunnedUntil: 0,
     // Death/respawn flags (client-side)
     dead: false,
-    awaitingRespawn: false
+    awaitingRespawn: false,
+    // --- keep base backups so equipment recompute can restore originals ---
+    _baseMaxHp: 200,
+    _baseBaseSpeed: 380,
+    _baseBaseDamage: 18
   };
 
   // --- Movement smoothing / interp params ---
@@ -132,6 +136,11 @@ export const state = (function(){
   };
   let settings = null; // loaded at init
 
+  // --- Equipment (5 slots for now) ---
+  const EQUIP_SLOTS = 5;
+  // equipment items are objects like { id, name, stats: { maxHp:+, baseDamage:+, baseSpeed:+, damageMul:+, buffDurationMul:+ } }
+  const equipment = new Array(EQUIP_SLOTS).fill(null);
+
   // --- NETWORK ---
   let ws = null;
   let sendInputInterval = null;
@@ -147,6 +156,63 @@ export const state = (function(){
   const CHAT_MAX = 50;
   const pendingChatIds = new Map(); // chatId -> DOM element for optimistic messages
   let chatFocused = false;
+
+  // --- Equipment helpers (apply equipment bonuses to player) ---
+  function applyEquipmentBonuses() {
+    // Ensure base backups exist
+    if (typeof player._baseMaxHp !== 'number') player._baseMaxHp = player.maxHp || 200;
+    if (typeof player._baseBaseSpeed !== 'number') player._baseBaseSpeed = player.baseSpeed || 380;
+    if (typeof player._baseBaseDamage !== 'number') player._baseBaseDamage = player.baseDamage || 18;
+
+    // aggregate stats
+    const bonus = {
+      maxHp: 0,
+      baseDamage: 0,
+      baseSpeed: 0,
+      damageMul: 0,
+      buffDurationMul: 0
+    };
+    for (const it of equipment) {
+      if (!it || !it.stats) continue;
+      const s = it.stats;
+      if (typeof s.maxHp === 'number') bonus.maxHp += s.maxHp;
+      if (typeof s.baseDamage === 'number') bonus.baseDamage += s.baseDamage;
+      if (typeof s.baseSpeed === 'number') bonus.baseSpeed += s.baseSpeed;
+      if (typeof s.damageMul === 'number') bonus.damageMul += s.damageMul;
+      if (typeof s.buffDurationMul === 'number') bonus.buffDurationMul += s.buffDurationMul;
+    }
+
+    // apply to player (store derived values, but keep base backups)
+    const prevMax = player.maxHp || player._baseMaxHp;
+    player.maxHp = Math.max(1, Math.round((player._baseMaxHp || 200) + bonus.maxHp));
+    // adjust current HP so the player benefits from increased max HP, clamp if lowered
+    const delta = player.maxHp - prevMax;
+    if (delta > 0) {
+      player.hp = Math.min(player.maxHp, (player.hp || prevMax) + delta);
+    } else {
+      player.hp = Math.min(player.maxHp, player.hp || player.maxHp);
+    }
+
+    player.baseDamage = Math.max(0, (player._baseBaseDamage || 18) + bonus.baseDamage);
+    player.baseSpeed = Math.max(1, (player._baseBaseSpeed || 380) + bonus.baseSpeed);
+    player.damageMul = Math.max(0, 1 + bonus.damageMul); // damageMul used multiplicatively elsewhere; preserve 1 as base
+    player.buffDurationMul = Math.max(0, 1 + bonus.buffDurationMul);
+
+    // Note: UI/logic reading player.baseSpeed / player.baseDamage will pick up changes immediately.
+  }
+
+  function equipItem(slotIndex, item) {
+    if (typeof slotIndex !== 'number' || slotIndex < 0 || slotIndex >= equipment.length) return false;
+    equipment[slotIndex] = item ? JSON.parse(JSON.stringify(item)) : null; // defensive clone
+    applyEquipmentBonuses();
+    return true;
+  }
+  function unequipItem(slotIndex) {
+    if (typeof slotIndex !== 'number' || slotIndex < 0 || slotIndex >= equipment.length) return false;
+    equipment[slotIndex] = null;
+    applyEquipmentBonuses();
+    return true;
+  }
 
   return {
     SERVER_URL,
@@ -174,6 +240,12 @@ export const state = (function(){
     SKILL_ICONS,
     defaultSettings,
     settings,
+    // equipment
+    EQUIP_SLOTS,
+    equipment,
+    equipItem,
+    unequipItem,
+    applyEquipmentBonuses,
     // network vars
     ws,
     sendInputInterval,

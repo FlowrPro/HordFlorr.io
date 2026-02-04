@@ -636,23 +636,21 @@ function drawMinimap() {
 
   const cx = x + size / 2;
   const cy = y + size / 2;
-  const mapExtent = (state.map.size && typeof state.map.size === 'number') ? state.map.size : ((state.map.radius || state.map.half || 750) * 2);
-  const scale = size / mapExtent;
+  const scale = size / (state.map.size || (state.map.radius * 2));
 
-  // draw base map (circle or square)
   if (state.map.type === 'circle') {
     dom.ctx.beginPath();
-    dom.ctx.arc(cx, cy, (state.map.radius || mapExtent/2) * scale, 0, Math.PI * 2);
+    dom.ctx.arc(cx, cy, state.map.radius * scale, 0, Math.PI * 2);
     dom.ctx.fillStyle = '#6fbf6f';
     dom.ctx.fill();
 
     dom.ctx.beginPath();
-    dom.ctx.arc(cx, cy, (state.map.radius || mapExtent/2) * scale, 0, Math.PI * 2);
+    dom.ctx.arc(cx, cy, state.map.radius * scale, 0, Math.PI * 2);
     dom.ctx.lineWidth = 2;
     dom.ctx.strokeStyle = '#2a6b2a';
     dom.ctx.stroke();
   } else {
-    const half = (state.map.half != null) ? state.map.half : (mapExtent / 2);
+    const half = state.map.half || (state.map.size/2);
     const ms = half * 2 * scale;
     dom.ctx.fillStyle = '#6fbf6f';
     dom.ctx.fillRect(cx - ms/2, cy - ms/2, ms, ms);
@@ -688,59 +686,6 @@ function drawMinimap() {
     }
   }
 
-  // Coordinate overlay centered at (0,0)
-  try {
-    const WORLD_HALF = mapExtent / 2;
-    const TICKS = 8; // number of divisions across the minimap (you can change this)
-    const step = mapExtent / TICKS; // world units per division
-
-    dom.ctx.save();
-    dom.ctx.lineWidth = 1;
-    dom.ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    dom.ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    dom.ctx.font = '10px system-ui, Arial';
-
-    // vertical lines (X coordinates). Values go from -WORLD_HALF ... +WORLD_HALF, with 0 at center.
-    for (let i = 0; i <= TICKS; i++) {
-      const worldX = -WORLD_HALF + i * step; // world coordinate relative to map center (0,0)
-      const sx = cx + worldX * scale;
-      // draw line
-      dom.ctx.beginPath();
-      dom.ctx.moveTo(sx, cy - size/2);
-      dom.ctx.lineTo(sx, cy + size/2);
-      dom.ctx.stroke();
-      // draw label at top inside minimap
-      dom.ctx.textAlign = 'center';
-      dom.ctx.textBaseline = 'top';
-      dom.ctx.fillText(String(Math.round(worldX)), sx, cy - size/2 + 2);
-    }
-
-    // horizontal lines (Y coordinates)
-    for (let i = 0; i <= TICKS; i++) {
-      const worldY = -WORLD_HALF + i * step; // world coordinate relative to map center
-      const sy = cy + worldY * scale;
-      dom.ctx.beginPath();
-      dom.ctx.moveTo(cx - size/2, sy);
-      dom.ctx.lineTo(cx + size/2, sy);
-      dom.ctx.stroke();
-      // draw label at left inside minimap
-      dom.ctx.textAlign = 'left';
-      dom.ctx.textBaseline = 'middle';
-      dom.ctx.fillText(String(Math.round(worldY)), cx - size/2 + 4, sy);
-    }
-
-    // label center (0,0) explicitly if visible
-    dom.ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    dom.ctx.font = '11px system-ui, Arial';
-    dom.ctx.textAlign = 'center';
-    dom.ctx.textBaseline = 'bottom';
-    dom.ctx.fillText('(0,0)', cx, cy - 4);
-
-    dom.ctx.restore();
-  } catch (e) {
-    // ignore overlay errors
-  }
-
   // player dot
   const px = cx + (state.player.x - state.map.center.x) * scale;
   const py = cy + (state.player.y - state.map.center.y) * scale;
@@ -749,7 +694,7 @@ function drawMinimap() {
   dom.ctx.arc(px, py, Math.max(3, Math.min(8, state.player.radius * 0.18)), 0, Math.PI * 2);
   dom.ctx.fill();
 
-  // mobs on minimap (small red dots)
+  // mobs on minimap (small red dots) - changed to red as requested
   for (const rm of state.remoteMobs.values()) {
     if (typeof rm.targetX !== 'number' || typeof rm.targetY !== 'number') continue;
     const mx = cx + (rm.targetX - state.map.center.x) * scale;

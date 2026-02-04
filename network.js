@@ -332,9 +332,7 @@ export function handleServerMessage(msg) {
         rm.radius = m.radius || rm.radius;
         rm.stunnedUntil = m.stunnedUntil || rm.stunnedUntil || 0;
         if (rm.dead && rm.hp > 0) rm.dead = false;
-        // if server says hp <= 0, mark dead quickly to fade
         if (rm.hp <= 0 && !rm.dead) { rm.dead = true; rm.alpha = 1.0; }
-        // If mob was damaged (snapshot shows lower hp than before), show damage number
         if (typeof prevHp === 'number' && typeof rm.hp === 'number' && rm.hp < prevHp) {
           state.remoteEffects.push({
             type: 'damage',
@@ -348,7 +346,6 @@ export function handleServerMessage(msg) {
         }
       }
     }
-    // remove mobs not present
     for (const key of Array.from(state.remoteMobs.keys())) {
       if (!seenMobs.has(key)) {
         const rm = state.remoteMobs.get(key);
@@ -388,7 +385,6 @@ export function handleServerMessage(msg) {
         rp.owner = p.owner || rp.owner;
       }
     }
-    // remove projectiles not present
     for (const key of Array.from(state.remoteProjectiles.keys())) {
       if (!seenProjs.has(key)) {
         state.remoteProjectiles.delete(key);
@@ -416,7 +412,23 @@ export function handleServerMessage(msg) {
       if (state.dom.chatInput) state.dom.chatInput.disabled = false;
       try { state.dom.canvas.focus(); } catch (e) {}
 
-      // Show inventory now that the world is ready (inventory is hidden until first snapshot)
+      // Give starter gear to the player once (client-side starter items)
+      try {
+        if (!state._startersGiven) {
+          const starters = [
+            { id: 'starter_helmet', name: 'Basic Helmet', img: 'assets/items/starterhelmet.png', icon: '🪖', stats: { maxHp: 20 } },
+            { id: 'starter_shirt',  name: 'Basic shirt',  img: 'assets/items/startershirt.png',  icon: '👕', stats: { maxHp: 30 } },
+            { id: 'starter_leggings',name: 'Basic pants',  img: 'assets/items/starterlegging.png', icon: '👖', stats: { baseSpeed: 6 } },
+            { id: 'starter_boots',  name: 'Basic Boots',  img: 'assets/items/starterboot.png',   icon: '🥿', stats: { baseSpeed: 8 } }
+          ];
+          for (const it of starters) {
+            try { dom.addItemToInventory(it); } catch (e) {}
+          }
+          state._startersGiven = true;
+        }
+      } catch (e) {}
+
+      // Show inventory now that the world is ready (inventory was hidden until first snapshot)
       try {
         if (state.dom && typeof state.dom.showInventory === 'function') state.dom.showInventory();
         else if (state.dom && state.dom.inventoryContainer) state.dom.inventoryContainer.style.display = 'grid';

@@ -149,6 +149,19 @@ export function handleServerMessage(msg) {
           continue;
         }
 
+        // detect local hp change for death: if server snapshot reports hp <= 0 for our player,
+        // and we're not already awaiting respawn, mark awaitingRespawn and show overlay.
+        const prevHp = (typeof state.player.hp === 'number') ? state.player.hp : null;
+        if (typeof sp.hp === 'number' && sp.hp <= 0 && !state.player.awaitingRespawn) {
+          // mark awaiting respawn and dead and show overlay
+          state.player.awaitingRespawn = true;
+          state.player.dead = true;
+          state.player.hp = 0;
+          try { showDeathOverlay(); } catch (e) {}
+          // continue; we intentionally do not apply further snapshot updates to our player while awaitingRespawn
+          continue;
+        }
+
         state.player.serverX = sp.x; state.player.serverY = sp.y;
         const dx = state.player.serverX - state.player.x; const dy = state.player.serverY - state.player.y;
         const dist = Math.hypot(dx, dy);
@@ -162,27 +175,27 @@ export function handleServerMessage(msg) {
 
         // Ensure local HP is updated from snapshot so UI can show correct values
         if (typeof sp.hp === 'number') {
-          const prevHp = Number.isFinite(state.player.hp) ? state.player.hp : 0;
+          const prevHp2 = Number.isFinite(state.player.hp) ? state.player.hp : 0;
           const newHp = sp.hp;
-          if (newHp > prevHp) {
+          if (newHp > prevHp2) {
             // show heal UI
             state.remoteEffects.push({
               type: 'heal',
               x: state.player.x,
               y: state.player.y - (state.player.radius + 12),
               color: 'rgba(120,255,140,0.95)',
-              text: `+${newHp - prevHp} HP`,
+              text: `+${newHp - prevHp2} HP`,
               start: Date.now(),
               duration: 1200
             });
-          } else if (newHp < prevHp) {
+          } else if (newHp < prevHp2) {
             // show damage number (from authoritative snapshot)
             state.remoteEffects.push({
               type: 'damage',
               x: state.player.x,
               y: state.player.y - (state.player.radius + 6),
               color: 'rgba(255,80,80,0.95)',
-              text: `${prevHp - newHp}`,
+              text: `${prevHp2 - newHp}`,
               start: Date.now(),
               duration: 1100
             });
@@ -531,7 +544,7 @@ export function handleServerMessage(msg) {
       // ensure hp is 0 locally
       state.player.hp = 0;
       // visually hide player (radius backup handled by dom.showDeathOverlay)
-      showDeathOverlay();
+      try { showDeathOverlay(); } catch (e) {}
     } else {
       // mark remote player's death visually (best-effort)
       const rp = state.remotePlayers.get(String(pid));

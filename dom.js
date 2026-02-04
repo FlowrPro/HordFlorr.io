@@ -205,6 +205,88 @@ export function hideDeathOverlay() {
   try { state.dom.canvas.tabIndex = 0; } catch (e) {}
 }
 
+// --- Reconnect overlay (auto-reconnect UI) ---
+const reconnectOverlay = document.createElement('div');
+reconnectOverlay.id = 'reconnectOverlay';
+reconnectOverlay.style.position = 'fixed';
+reconnectOverlay.style.inset = '0';
+reconnectOverlay.style.display = 'none';
+reconnectOverlay.style.zIndex = 10020;
+reconnectOverlay.style.background = 'rgba(10,10,12,0.6)';
+reconnectOverlay.style.backdropFilter = 'blur(3px)';
+reconnectOverlay.style.webkitBackdropFilter = 'blur(3px)';
+reconnectOverlay.style.alignItems = 'center';
+reconnectOverlay.style.justifyContent = 'center';
+reconnectOverlay.style.pointerEvents = 'auto';
+reconnectOverlay.style.flexDirection = 'column';
+reconnectOverlay.style.gap = '12px';
+reconnectOverlay.style.padding = '20px';
+reconnectOverlay.style.boxSizing = 'border-box';
+
+const reconnectBox = document.createElement('div');
+reconnectBox.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))';
+reconnectBox.style.color = '#fff';
+reconnectBox.style.padding = '18px';
+reconnectBox.style.borderRadius = '10px';
+reconnectBox.style.boxShadow = '0 12px 40px rgba(0,0,0,0.6)';
+reconnectBox.style.maxWidth = 'min(92vw, 420px)';
+reconnectBox.style.textAlign = 'center';
+reconnectBox.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial';
+reconnectBox.style.pointerEvents = 'auto';
+
+const reconnectMsg = document.createElement('div');
+reconnectMsg.textContent = 'Disconnected — attempting to reconnect…';
+reconnectMsg.style.fontSize = '16px';
+reconnectMsg.style.fontWeight = '700';
+reconnectMsg.style.marginBottom = '8px';
+
+const reconnectSub = document.createElement('div');
+reconnectSub.textContent = 'Trying to restore connection automatically.';
+reconnectSub.style.fontSize = '13px';
+reconnectSub.style.opacity = '0.95';
+reconnectSub.style.marginBottom = '12px';
+
+const reconnectCancelBtn = document.createElement('button');
+reconnectCancelBtn.type = 'button';
+reconnectCancelBtn.textContent = 'Cancel';
+reconnectCancelBtn.style.fontSize = '14px';
+reconnectCancelBtn.style.padding = '8px 12px';
+reconnectCancelBtn.style.borderRadius = '8px';
+reconnectCancelBtn.style.border = 'none';
+reconnectCancelBtn.style.background = '#c04';
+reconnectCancelBtn.style.color = '#fff';
+reconnectCancelBtn.style.cursor = 'pointer';
+reconnectCancelBtn.style.boxShadow = '0 8px 24px rgba(192,4,4,0.18)';
+
+let reconnectCancelCallback = null;
+reconnectCancelBtn.addEventListener('click', () => {
+  try {
+    if (typeof reconnectCancelCallback === 'function') reconnectCancelCallback();
+  } catch (e) {}
+});
+
+reconnectBox.appendChild(reconnectMsg);
+reconnectBox.appendChild(reconnectSub);
+reconnectBox.appendChild(reconnectCancelBtn);
+reconnectOverlay.appendChild(reconnectBox);
+document.body.appendChild(reconnectOverlay);
+
+export function setReconnectCancelCallback(fn) { reconnectCancelCallback = fn; }
+export function showReconnectOverlay(msg, sub = 'Trying to restore connection automatically.') {
+  try {
+    reconnectMsg.textContent = String(msg || 'Disconnected — attempting to reconnect…');
+    reconnectSub.textContent = String(sub || reconnectSub.textContent);
+    reconnectOverlay.style.display = 'flex';
+    reconnectOverlay.setAttribute('aria-hidden', 'false');
+  } catch (e) {}
+}
+export function hideReconnectOverlay() {
+  try {
+    reconnectOverlay.style.display = 'none';
+    reconnectOverlay.setAttribute('aria-hidden', 'true');
+  } catch (e) {}
+}
+
 // expose some DOM items on state.dom for other modules to use
 state.dom = {
   canvas, ctx,
@@ -217,7 +299,9 @@ state.dom = {
   transientMessage,
   // death overlay
   deathOverlay,
-  respawnBtn
+  respawnBtn,
+  // reconnect overlay
+  reconnectOverlay
 };
 
 // Hide chat panel until game is ready
@@ -349,8 +433,11 @@ export function showSkillTooltip(meta, x, y) {
   }
   if (meta.stunMs) lines.push(`<div style="font-size:12px;"><strong>Stun:</strong> ${Math.round(meta.stunMs/1000)}s</div>`);
   skillTooltip.innerHTML = lines.join('');
-  skillTooltip.style.left = `${Math.min(window.innerWidth - 220, x)}px`;
-  skillTooltip.style.top = `${Math.min(window.innerHeight - 120, y)}px`;
+  // clamp to viewport to avoid going offscreen
+  const left = Math.max(6, Math.min(window.innerWidth - 220, x));
+  const top = Math.max(6, Math.min(window.innerHeight - 120, y));
+  skillTooltip.style.left = `${left}px`;
+  skillTooltip.style.top = `${top}px`;
   skillTooltip.style.display = 'block';
 }
 export function hideSkillTooltip() {
@@ -402,5 +489,9 @@ export default {
   hideSkillTooltip,
   // death overlay exports
   showDeathOverlay,
-  hideDeathOverlay
+  hideDeathOverlay,
+  // reconnect overlay exports
+  setReconnectCancelCallback,
+  showReconnectOverlay,
+  hideReconnectOverlay
 };

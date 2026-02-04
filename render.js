@@ -694,13 +694,13 @@ function drawMinimap() {
   dom.ctx.arc(px, py, Math.max(3, Math.min(8, state.player.radius * 0.18)), 0, Math.PI * 2);
   dom.ctx.fill();
 
-  // mobs on minimap (small grey dots)
+  // mobs on minimap (small red dots) - changed to red as requested
   for (const rm of state.remoteMobs.values()) {
     if (typeof rm.targetX !== 'number' || typeof rm.targetY !== 'number') continue;
     const mx = cx + (rm.targetX - state.map.center.x) * scale;
     const my = cy + (rm.targetY - state.map.center.y) * scale;
     dom.ctx.beginPath();
-    dom.ctx.fillStyle = 'rgba(150,150,150,0.95)';
+    dom.ctx.fillStyle = 'rgba(220,80,80,0.95)'; // red for mobs now
     dom.ctx.arc(mx, my, Math.max(1.5, Math.min(4, (rm.radius || 12) * 0.08)), 0, Math.PI * 2);
     dom.ctx.fill();
   }

@@ -293,6 +293,14 @@ html, body {
   z-index: 10010;
 }
 
+/* Reconnect overlay */
+#reconnectOverlay {
+  /* styled inline in dom.js for fine-grained control; this is a minimal fallback */
+}
+#reconnectOverlay > div {
+  /* inner box fallback; main styles are applied inline in dom.js */
+}
+
 /* Death overlay */
 #deathOverlay {
   /* created/managed by dom.js; styles here as fallback */

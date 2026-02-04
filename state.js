@@ -29,6 +29,10 @@ export const state = (function(){
     // New: default HP values to ensure UI shows sensible numbers prior to first snapshot
     maxHp: 200,
     hp: 200,
+    // Leveling / progression defaults (client side)
+    nextLevelXp: 100,
+    damageMul: 1.0,
+    buffDurationMul: 1.0,
     serverX: null,
     serverY: null,
     localBuffs: [],        // optimistic visual buffs: {type, until, multiplier}
@@ -52,7 +56,7 @@ export const state = (function(){
   const remoteProjectiles = new Map(); // id -> { id, type, targetX, targetY, displayX, displayY, vx, vy, radius, owner, alpha }
 
   // --- Client-side visual effects (AoE rings, explosions, buff visuals, XP pop, melee) ---
-  const remoteEffects = []; // { type:'aoe'|'explosion'|'buff'|'melee'|'xp', x,y, radius, color, start, duration, text }
+  const remoteEffects = []; // { type:'aoe'|'explosion'|'buff'|'melee'|'xp'|'heal'|'damage', x,y, radius, color, start, duration, text }
 
   // --- Input state ---
   const keys = {};

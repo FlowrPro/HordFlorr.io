@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { roundRectScreen, pseudo, clientPointInsideWall, clampToMap } from './utils.js';
 import dom from './dom.js';
 import { getHotbarSlotUnderPointer } from './input.js'; // use the single implementation exported by input.js
+import { preloadIcons, getSkillIcon } from './icons.js';
 
 // --- Canvas setup (DPR aware) ---
 export function resizeCanvas() {
@@ -16,6 +17,22 @@ export function resizeCanvas() {
 }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
+
+// Preload icons manifest built from state.SKILL_META.
+// This is non-blocking for startup — we start preload but don't await.
+(function preloadSkillIcons() {
+  try {
+    const manifest = [];
+    const meta = state.SKILL_META || {};
+    for (const cls of Object.keys(meta)) {
+      const arr = meta[cls] || [];
+      for (const m of arr) {
+        if (m && m.type) manifest.push({ class: cls, type: m.type });
+      }
+    }
+    preloadIcons(manifest).catch(() => {});
+  } catch (e) {}
+})();
 
 // --- helper: currentClientSpeed (from main.js) ---
 export function currentClientSpeed() {
@@ -122,16 +139,32 @@ function drawHotbar(vw, vh) {
       roundRectScreen(dom.ctx, sx, sy, slotSize, slotSize, 8, false, true);
     }
 
-    // draw icon background using skill color and icon glyph
+    // draw icon background using skill color and icon glyph or image
     const meta = (state.SKILL_META[state.player.class] && state.SKILL_META[state.player.class][i]) || null;
     if (meta) {
       dom.ctx.fillStyle = meta.color || 'rgba(255,255,255,0.06)';
       roundRectScreen(dom.ctx, sx + 8, sy + 8, slotSize - 16, slotSize - 16, 6, true, false);
-      const glyph = state.SKILL_ICONS[meta.type] || meta.name.charAt(0);
-      dom.ctx.font = '22px system-ui, Arial';
-      dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'middle';
-      dom.ctx.fillStyle = '#111';
-      dom.ctx.fillText(glyph, sx + slotSize/2, sy + slotSize/2 + 2);
+
+      // Try to draw image icon if available
+      let drawn = false;
+      try {
+        const img = getSkillIcon(state.player.class, meta.type);
+        if (img && img.complete && img.naturalWidth > 0) {
+          const inset = 8;
+          const iw = slotSize - 16;
+          const ih = slotSize - 16;
+          dom.ctx.drawImage(img, sx + inset, sy + inset, iw, ih);
+          drawn = true;
+        }
+      } catch (e) { drawn = false; }
+
+      if (!drawn) {
+        const glyph = state.SKILL_ICONS[meta.type] || meta.name.charAt(0);
+        dom.ctx.font = '22px system-ui, Arial';
+        dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'middle';
+        dom.ctx.fillStyle = '#111';
+        dom.ctx.fillText(glyph, sx + slotSize/2, sy + slotSize/2 + 2);
+      }
     } else {
       dom.ctx.font = '12px system-ui, Arial';
       dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'middle'; dom.ctx.fillStyle = '#fff';

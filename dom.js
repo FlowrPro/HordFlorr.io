@@ -773,56 +773,58 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
   slot.appendChild(lbl);
 
   slot.draggable = false;
-  slot.addEventListener('dragstart', function (e) {
-    const idx = Number(this.dataset.slot);
-    const it = state.equipment[idx];
-    if (!it || !e.dataTransfer) { e.preventDefault(); return; }
-    const payload = { item: JSON.parse(JSON.stringify(it)), source: 'gear', index: idx };
-    try { e.dataTransfer.setData('application/json', JSON.stringify(payload)); } catch (err) {}
+ slot.addEventListener('dragstart', function (e) {
+  const idx = Number(this.dataset.slot);
+  const it = state.equipment[idx];
+  if (!it || !e.dataTransfer) { e.preventDefault(); return; }
+  const payload = { item: JSON.parse(JSON.stringify(it)), source: 'gear', index: idx };
+  try { e.dataTransfer.setData('application/json', JSON.stringify(payload)); } catch (err) {}
+  try { e.dataTransfer.setData('text/plain', JSON.stringify(payload)); } catch (err) {}
+  try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
 
-    // try to draw a representative drag image: prefer item.img if preloaded, otherwise glyph canvas fallback
-    try {
-      const dragCanvas = document.createElement('canvas');
-      dragCanvas.width = 64; dragCanvas.height = 64;
-      const c = dragCanvas.getContext('2d');
-      c.fillStyle = 'rgba(0,0,0,0.6)';
-      c.fillRect(0,0,64,64);
+  // try to draw a representative drag image: prefer item.img if preloaded, otherwise glyph canvas fallback
+  try {
+    const dragCanvas = document.createElement('canvas');
+    dragCanvas.width = 64; dragCanvas.height = 64;
+    const c = dragCanvas.getContext('2d');
+    c.fillStyle = 'rgba(0,0,0,0.6)';
+    c.fillRect(0,0,64,64);
 
-      // If item has image and it's already cached/loaded, draw it to drag image.
-      if (it.img) {
-        const img = new Image();
-        const dpr = window.devicePixelRatio || 1;
-        if (dpr >= 2) {
-          const m = String(it.img).match(/^(.*)(\.[^./]+)$/);
-          if (m) {
-            const cand = `${m[1]}@2x${m[2]}`;
-            img.src = cand;
-            if (!img.complete) img.src = it.img;
-          } else {
-            img.src = it.img;
-          }
+    // If item has image and it's already cached/loaded, draw it to drag image.
+    if (it.img) {
+      const img = new Image();
+      const dpr = window.devicePixelRatio || 1;
+      if (dpr >= 2) {
+        const m = String(it.img).match(/^(.*)(\.[^./]+)$/);
+        if (m) {
+          const cand = `${m[1]}@2x${m[2]}`;
+          img.src = cand;
+          if (!img.complete) img.src = it.img;
         } else {
           img.src = it.img;
         }
-        if (img.complete && img.naturalWidth > 0) {
-          const pad = 6;
-          c.drawImage(img, pad, pad, 64 - pad*2, 64 - pad*2);
-          e.dataTransfer.setDragImage(dragCanvas, 32, 32);
-          return;
-        }
+      } else {
+        img.src = it.img;
       }
-
-      // glyph fallback
-      c.fillStyle = '#fff';
-      c.font = '32px system-ui, Arial';
-      c.textAlign = 'center';
-      c.textBaseline = 'middle';
-      c.fillText(it.icon || (it.name ? it.name.charAt(0) : '?'), 32, 34);
-      e.dataTransfer.setDragImage(dragCanvas, 32, 32);
-    } catch (err) {
-      // ignore drag image errors
+      if (img.complete && img.naturalWidth > 0) {
+        const pad = 6;
+        c.drawImage(img, pad, pad, 64 - pad*2, 64 - pad*2);
+        try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
+        return;
+      }
     }
-  });
+
+    // glyph fallback
+    c.fillStyle = '#fff';
+    c.font = '32px system-ui, Arial';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(it.icon || (it.name ? it.name.charAt(0) : '?'), 32, 34);
+    try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
+  } catch (err) {
+    // ignore drag image errors
+  }
+});
 
   slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; });
   slot.addEventListener('dragleave', (e) => { slot.style.outline = ''; });
@@ -1022,8 +1024,15 @@ function inventoryDragStartHandler(e) {
   const srcSlot = Number(this.dataset.index != null ? this.dataset.index : (this.parentElement && this.parentElement.dataset.index) || -1);
   const item = state.inventory[srcSlot];
   if (!item || !e.dataTransfer) { e.preventDefault(); return; }
+
   const payload = { item: JSON.parse(JSON.stringify(item)), source: 'inventory', index: srcSlot };
+
+  // Set both application/json and text/plain for broader compatibility,
+  // and hint that the operation is a move.
   try { e.dataTransfer.setData('application/json', JSON.stringify(payload)); } catch (err) {}
+  try { e.dataTransfer.setData('text/plain', JSON.stringify(payload)); } catch (err) {}
+  try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
+
   try {
     const dragCanvas = document.createElement('canvas');
     dragCanvas.width = 64; dragCanvas.height = 64;
@@ -1035,7 +1044,8 @@ function inventoryDragStartHandler(e) {
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     c.fillText(item.icon || (item.name ? item.name.charAt(0) : '?'), 32, 34);
-    e.dataTransfer.setDragImage(dragCanvas, 32, 32);
+    // use drag image if available
+    try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
   } catch (err) {}
 }
 

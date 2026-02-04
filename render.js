@@ -256,7 +256,9 @@ function drawHotbar(vw, vh) {
       }
     } else {
       dom.ctx.font = '12px system-ui, Arial';
-      dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'middle'; dom.ctx.fillStyle = '#fff';
+      dom.ctx.textAlign = 'center';
+      dom.ctx.textBaseline = 'middle';
+      dom.ctx.fillStyle = '#fff';
       dom.ctx.fillText(`Slot ${i+1}`, sx + slotSize/2, sy + slotSize/2);
     }
 
@@ -774,8 +776,26 @@ function drawMinimap() {
   roundRectScreen(dom.ctx, x - 6, y - 6, size + 12, size + 12, cornerRadius + 2, false, true);
 
   dom.ctx.restore();
+
+  // Position the DOM gear button to the left of the minimap
+  try {
+    if (dom.gearButton) {
+      const dpr = window.devicePixelRatio || 1;
+      // convert minimap x,y in CSS pixels
+      const cssX = x; const cssY = y;
+      const btnSize = 36;
+      // position left of minimap with a small gap
+      dom.gearButton.style.left = `${Math.max(8, cssX - btnSize - 12)}px`;
+      dom.gearButton.style.top = `${cssY + 6}px`;
+    }
+    // Also keep gear panel stats updated if it's visible
+    if (dom.gearPanel && dom.gearPanel.style.display && dom.gearPanel.style.display !== 'none') {
+      if (typeof dom.updateAllSlotVisuals === 'function') dom.updateAllSlotVisuals();
+    }
+  } catch (e) {}
 }
 
+// The rest of file unchanged (draw player, hotbar and main loop)
 function drawCoordinatesBottomRight() {
   if (!state.settings.showCoordinates) return;
   const vw = dom.canvas.width / (window.devicePixelRatio || 1);
@@ -841,8 +861,7 @@ export function startLoop() {
     state.player.x += state.player.vx * dt;
     state.player.y += state.player.vy * dt;
     if (state.player.serverX !== null && state.player.serverY !== null) {
-      const dx = state.player.serverX - state.player.x;
-      const dy = state.player.serverY - state.player.y;
+      const dx = state.player.serverX - state.player.x; const dy = state.player.serverY - state.player.y;
       const factor = 1 - Math.exp(-state.RECONCILE_SPEED * dt);
       state.player.x += dx * factor;
       state.player.y += dy * factor;
@@ -887,6 +906,18 @@ export function startLoop() {
       drawActiveEffectsAt(barX + barW + 10, hpY, barH);
       const xpY = hotbarY + slotSize + 8;
       drawXpBarAt(barX, xpY, barW, barH);
+
+      // Additional numeric HP / XP display under the hotbar (centered)
+      dom.ctx.save();
+      dom.ctx.font = '13px system-ui, Arial';
+      dom.ctx.textAlign = 'center';
+      dom.ctx.textBaseline = 'top';
+      dom.ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      const hpText = `HP: ${Math.round(state.player.hp || 0)} / ${Math.round(state.player.maxHp || 0)}`;
+      const xpText = `XP: ${Math.round(state.player.xp || 0)} / ${Math.round(state.player.nextLevelXp || 0)}`;
+      dom.ctx.fillText(hpText, barX + barW / 2, xpY + barH + 6);
+      dom.ctx.fillText(xpText, barX + barW / 2, xpY + barH + 24);
+      dom.ctx.restore();
     }
 
     if (!titleVisible) {

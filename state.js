@@ -136,6 +136,11 @@ export const state = (function(){
   };
   let settings = null; // loaded at init
 
+  // --- Inventory config and storage ---
+  // Restore INV_SLOTS and inventory array so inventory UI can be built.
+  const INV_SLOTS = 16; // default inventory size (4 columns x 4 rows)
+  const inventory = new Array(INV_SLOTS).fill(null);
+
   // --- Equipment (5 slots for now) ---
   const EQUIP_SLOTS = 5;
   // equipment items are objects like { id, name, stats: { maxHp:+, baseDamage:+, baseSpeed:+, damageMul:+, buffDurationMul:+ } }
@@ -239,6 +244,9 @@ export const state = (function(){
     SKILL_ICONS,
     defaultSettings,
     settings,
+    // inventory
+    INV_SLOTS,
+    inventory,
     // equipment
     EQUIP_SLOTS,
     equipment,

@@ -6,6 +6,7 @@ import dom from './dom.js';
 import { getHotbarSlotUnderPointer } from './input.js'; // use the single implementation exported by input.js
 import { preloadTextures, getTexturePattern } from './textures.js';
 import { getSkillIcon } from './icons.js'; // <-- imported so we can draw real icons when loaded
+import { drawMob } from './mob_render.js'; // new procedural mob renderer
 
 // --- Canvas setup (DPR aware) ---
 export function resizeCanvas() {
@@ -436,7 +437,7 @@ function drawWorld(vw, vh, dt) {
   }
   dom.ctx.restore();
 
-  // draw mobs (interpolated + simple spawn/fade + hp bar)
+  // draw mobs (interpolated + spawn/fade + hp bar) using procedural sprites
   dom.ctx.save();
   for (const rm of state.remoteMobs.values()) {
     // interpolate
@@ -452,16 +453,22 @@ function drawWorld(vw, vh, dt) {
     // if fully faded out and dead, remove from map
     if (rm.dead && rm.alpha <= 0.001) { state.remoteMobs.delete(rm.id); continue; }
 
-    dom.ctx.globalAlpha = rm.alpha != null ? rm.alpha : 1.0;
-    // mob body
-    dom.ctx.beginPath();
-    dom.ctx.arc(rm.displayX, rm.displayY, rm.radius || 14, 0, Math.PI * 2);
-    dom.ctx.fillStyle = rm.color || '#9c9c9c';
-    dom.ctx.fill();
-    // outline
-    dom.ctx.lineWidth = 1;
-    dom.ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-    dom.ctx.stroke();
+    // Draw procedural sprite (handles silhouette & simple stun glyph)
+    try {
+      drawMob(dom.ctx, rm);
+    } catch (e) {
+      // fallback to circle if drawMob fails
+      dom.ctx.globalAlpha = rm.alpha != null ? rm.alpha : 1.0;
+      dom.ctx.beginPath();
+      dom.ctx.arc(rm.displayX, rm.displayY, rm.radius, 0, Math.PI * 2);
+      dom.ctx.fillStyle = rm.color || '#9c9c9c';
+      dom.ctx.fill();
+      dom.ctx.lineWidth = 1;
+      dom.ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      dom.ctx.stroke();
+      dom.ctx.globalAlpha = 1.0;
+    }
+
     // hp bar
     if (typeof rm.hp === 'number' && typeof rm.maxHp === 'number' && rm.maxHp > 0) {
       const pct = Math.max(0, Math.min(1, rm.hp / rm.maxHp));
@@ -479,11 +486,12 @@ function drawWorld(vw, vh, dt) {
       dom.ctx.globalAlpha = 1.0;
     }
 
-    // stun visual
+    // stun visual (drawMob also draws a simple stun glyph, but keep this for clarity)
     if (rm.stunnedUntil && rm.stunnedUntil > Date.now()) {
       dom.ctx.font = '14px system-ui, Arial'; dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'bottom'; dom.ctx.fillStyle = 'rgba(255,255,255,0.95)'; dom.ctx.fillText('❌', rm.displayX, rm.displayY - rm.radius - 12);
     }
   }
+  dom.ctx.restore();
 
   // draw any remoteEffects that are world-space (aoe, xp, heal, melee, damage)
   const now = Date.now();

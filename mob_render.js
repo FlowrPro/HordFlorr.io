@@ -1,16 +1,13 @@
-// Procedural mob renderer for Moborr.io
-// Exports drawMob(ctx, rm, options) which draws the mob at rm.displayX, rm.displayY
-// without requiring external image assets. Uses a small offscreen cache keyed by
-// (type, radius, color) to avoid re-drawing complex shapes every frame.
+// Procedural mob renderer for Moborr.io (top-down / rear view).
+// Exports drawMob(ctx, rm, options).
+// Sprites are cached in an offscreen canvas keyed by (type, radius, color).
 
 const spriteCache = new Map();
 
-// Helper: make cache key
 function cacheKey(type, radius, color) {
   return `${type}::r${Math.round(radius)}::c${color || ''}`;
 }
 
-// Utility: rounded rectangle path
 function roundRectPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -21,249 +18,7 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// Create an offscreen canvas sprite for a single mob instance
-function renderSpriteToCanvas(type, radius, color) {
-  // Choose canvas size based on radius (give margin for ears/tails/shadows)
-  const size = Math.max(64, Math.ceil(radius * 2.8));
-  const canvas = document.createElement('canvas');
-  const dpr = 1; // keep 1 for cache simplicity
-  canvas.width = canvas.height = size * dpr;
-  const ctx = canvas.getContext('2d');
-
-  // Center point
-  const cx = size / 2;
-  const cy = size / 2;
-
-  // scale factor relative to radius
-  const s = (radius * 2) / (size * 0.6); // adjust so radius ~ body size
-
-  // small helpers
-  function radialGradFill(x, y, rInner, rOuter, colorInner, colorOuter) {
-    const g = ctx.createRadialGradient(x, y, rInner, x, y, rOuter);
-    g.addColorStop(0, colorInner);
-    g.addColorStop(1, colorOuter);
-    ctx.fillStyle = g;
-  }
-
-  // background drop shadow
-  ctx.save();
-  ctx.globalAlpha = 0.14;
-  const shadowR = Math.max(6, radius * 0.6);
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + radius * 0.3, shadowR, shadowR * 0.6, 0, 0, Math.PI * 2);
-  ctx.fillStyle = '#000';
-  ctx.fill();
-  ctx.restore();
-
-  // draw type-specific body shapes
-  if (type === 'wolf') {
-    const bodyR = radius * 0.95;
-    // body oval
-    radialGradFill(cx - radius * 0.12, cy - radius * 0.05, bodyR * 0.45, bodyR * 1.05, color || '#8b6b4b', shade(color || '#8b6b4b', -18));
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, bodyR, bodyR * 0.8, -0.3, 0, Math.PI * 2);
-    ctx.fill();
-    // soft fur shadow
-    ctx.save();
-    ctx.globalAlpha = 0.12;
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.ellipse(cx - bodyR * 0.1, cy - bodyR * 0.15, bodyR * 0.55, bodyR * 0.4, -0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    // head (top-left)
-    const headR = bodyR * 0.6;
-    radialGradFill(cx - bodyR * 0.8, cy - bodyR * 0.6, headR * 0.25, headR * 0.85, color || '#8b6b4b', shade(color || '#8b6b4b', -26));
-    ctx.beginPath();
-    ctx.ellipse(cx - bodyR * 0.8, cy - bodyR * 0.6, headR, headR * 0.85, -0.2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // ears
-    ctx.save();
-    ctx.translate(cx - bodyR * 0.95, cy - bodyR * 0.95);
-    ctx.rotate(-0.35);
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(12 * s, -8 * s);
-    ctx.lineTo(6 * s, 16 * s);
-    ctx.closePath();
-    ctx.fillStyle = shade(color || '#8b6b4b', -20);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(cx - bodyR * 0.6, cy - bodyR * 0.95);
-    ctx.rotate(0.05);
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(-10 * s, -8 * s);
-    ctx.lineTo(-4 * s, 14 * s);
-    ctx.closePath();
-    ctx.fillStyle = shade(color || '#8b6b4b', -26);
-    ctx.fill();
-    ctx.restore();
-
-    // snout / nose
-    ctx.beginPath();
-    ctx.ellipse(cx - bodyR * 1.05, cy - bodyR * 0.58, 8 * s, 6 * s, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#2a2116';
-    ctx.fill();
-
-    // eyes (top-down white circles)
-    ctx.beginPath();
-    ctx.fillStyle = '#fff';
-    ctx.ellipse(cx - bodyR * 0.95, cy - bodyR * 0.65, 6 * s, 6 * s, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cx - bodyR * 0.75, cy - bodyR * 0.65, 6 * s, 6 * s, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // pupils
-    ctx.fillStyle = '#111';
-    ctx.beginPath();
-    ctx.ellipse(cx - bodyR * 0.95, cy - bodyR * 0.65, 2.8 * s, 2.8 * s, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cx - bodyR * 0.75, cy - bodyR * 0.65, 2.8 * s, 2.8 * s, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // tail (curled right)
-    ctx.save();
-    ctx.translate(cx + bodyR * 0.6, cy - bodyR * 0.05);
-    ctx.rotate(0.6);
-    radialGradFill(0, 0, bodyR * 0.12, bodyR * 0.5, shade(color || '#8b6b4b', -6), shade(color || '#8b6b4b', -28));
-    ctx.beginPath();
-    ctx.ellipse(0, 0, bodyR * 0.35, bodyR * 0.14, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    // outline
-    ctx.beginPath();
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-    ctx.lineWidth = 1.5;
-    ctx.ellipse(cx, cy, bodyR, bodyR * 0.8, -0.3, 0, Math.PI * 2);
-    ctx.stroke();
-
-  } else if (type === 'goblin') {
-    const bodyR = radius * 0.85;
-    // body
-    radialGradFill(cx, cy + bodyR * 0.1, bodyR * 0.3, bodyR * 0.9, color || '#84c053', shade(color || '#84c053', -18));
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, bodyR * 0.9, bodyR * 1.0, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // head (big, top)
-    const headR = bodyR * 0.7;
-    radialGradFill(cx, cy - headR * 0.6, headR * 0.3, headR * 0.95, color || '#8cd06a', shade(color || '#8cd06a', -20));
-    ctx.beginPath();
-    ctx.ellipse(cx, cy - bodyR * 0.6, headR, headR * 0.9, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // ears (pointy)
-    ctx.save();
-    ctx.translate(cx - headR * 0.9, cy - bodyR * 0.7);
-    ctx.rotate(-0.25);
-    ctx.beginPath();
-    ctx.moveTo(0, 0); ctx.lineTo(-10 * s, -18 * s); ctx.lineTo(8 * s, -4 * s); ctx.fillStyle = shade(color || '#8cd06a', -24); ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(cx + headR * 0.9, cy - bodyR * 0.7);
-    ctx.rotate(0.25);
-    ctx.beginPath();
-    ctx.moveTo(0, 0); ctx.lineTo(10 * s, -18 * s); ctx.lineTo(-8 * s, -4 * s); ctx.fillStyle = shade(color || '#8cd06a', -24); ctx.fill();
-    ctx.restore();
-
-    // eyes (dark slits)
-    ctx.fillStyle = '#111';
-    ctx.beginPath();
-    ctx.ellipse(cx - 8 * s, cy - bodyR * 0.6, 4 * s, 6 * s, -0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cx + 8 * s, cy - bodyR * 0.6, 4 * s, 6 * s, 0.2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // teeth (simple triangles)
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.moveTo(cx - 6 * s, cy - bodyR * 0.45); ctx.lineTo(cx - 2 * s, cy - bodyR * 0.35); ctx.lineTo(cx - 10 * s, cy - bodyR * 0.38); ctx.closePath(); ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(cx + 6 * s, cy - bodyR * 0.45); ctx.lineTo(cx + 2 * s, cy - bodyR * 0.35); ctx.lineTo(cx + 10 * s, cy - bodyR * 0.38); ctx.closePath(); ctx.fill();
-
-    // small belt/armor line
-    ctx.fillStyle = '#5b402e';
-    ctx.fillRect(cx - bodyR * 0.6, cy + bodyR * 0.25, bodyR * 1.2, 6 * s);
-
-    // outline
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.ellipse(cx, cy, bodyR * 0.9, bodyR * 1.0, 0, 0, Math.PI * 2); ctx.stroke();
-
-  } else if (type === 'golem') {
-    // blocky stone golem: stacked rectangle + core
-    const bodyW = radius * 1.6;
-    const bodyH = radius * 1.8;
-    const bx = cx - bodyW / 2;
-    const by = cy - bodyH / 2;
-
-    // stone gradient
-    const stoneA = '#9e9e9e';
-    const stoneB = '#6e6e6e';
-    const g = ctx.createLinearGradient(bx, by, bx + bodyW, by + bodyH);
-    g.addColorStop(0, stoneA);
-    g.addColorStop(1, stoneB);
-    ctx.fillStyle = g;
-    roundRectPath(ctx, bx, by, bodyW, bodyH, Math.max(6, radius * 0.12));
-    ctx.fill();
-
-    // shoulder plate
-    ctx.fillStyle = shade('#bdbdbd', -6);
-    roundRectPath(ctx, bx + bodyW * 0.06, by - bodyH * 0.18, bodyW * 0.88, bodyH * 0.24, Math.max(4, radius * 0.08));
-    ctx.fill();
-
-    // cracks
-    ctx.strokeStyle = 'rgba(40,40,40,0.75)';
-    ctx.lineWidth = Math.max(1, radius * 0.04);
-    ctx.beginPath();
-    ctx.moveTo(bx + bodyW * 0.25, by + bodyH * 0.1);
-    ctx.lineTo(bx + bodyW * 0.28, by + bodyH * 0.45);
-    ctx.lineTo(bx + bodyW * 0.2, by + bodyH * 0.6);
-    ctx.stroke();
-
-    // glowing core circle
-    const coreX = cx;
-    const coreY = cy + bodyH * 0.1;
-    const coreR = Math.max(6, radius * 0.45);
-    const coreG = ctx.createRadialGradient(coreX, coreY, coreR * 0.1, coreX, coreY, coreR);
-    coreG.addColorStop(0, '#ffd86b');
-    coreG.addColorStop(1, 'rgba(255,120,20,0.05)');
-    ctx.fillStyle = coreG;
-    ctx.beginPath();
-    ctx.arc(coreX, coreY, coreR, 0, Math.PI * 2);
-    ctx.fill();
-
-    // eyes (glow slits)
-    ctx.fillStyle = '#ffd86b';
-    ctx.fillRect(cx - 6 * s, by + bodyH * 0.02, 4 * s, 8 * s);
-    ctx.fillRect(cx + 2 * s, by + bodyH * 0.02, 4 * s, 8 * s);
-
-    // outline
-    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.4;
-    roundRectPath(ctx, bx, by, bodyW, bodyH, Math.max(6, radius * 0.12));
-    ctx.stroke();
-  } else {
-    // fallback: simple circle
-    ctx.beginPath();
-    radialGradFill(cx, cy, radius * 0.4, radius * 1.1, color || '#9c9c9c', shade(color || '#9c9c9c', -24));
-    ctx.ellipse(cx, cy, radius, radius, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-    ctx.stroke();
-  }
-
-  return canvas;
-}
-
-// small helper to darken/lighten a hex or CSS color (very small function)
+// Helper: small color adjust for basic shading
 function shade(hexOrCss, percent) {
   try {
     if (hexOrCss && hexOrCss[0] === '#') {
@@ -279,9 +34,241 @@ function shade(hexOrCss, percent) {
   return hexOrCss || '#999';
 }
 
-// Public API: draw mob at its display position
+// Render a single sprite to offscreen canvas for a given type & radius.
+// This version focuses on a top-down (rear) perspective: body/shoulders/tail/pack, no face.
+function renderSpriteToCanvas(type, radius, color) {
+  const size = Math.max(64, Math.ceil(radius * 3.0));
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  const cx = size / 2;
+  const cy = size / 2;
+
+  // scale factor (used for small detail sizes)
+  const s = Math.max(0.6, radius / 24);
+
+  // soft shadow under creature
+  ctx.save();
+  ctx.globalAlpha = 0.14;
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + radius * 0.35, Math.max(8, radius * 0.7), Math.max(4, radius * 0.36), 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  if (type === 'wolf') {
+    // Top-down rear wolf: rounded back, a visible collar/shoulder, curled tail to the right.
+    const bodyW = radius * 1.5;
+    const bodyH = radius * 1.05;
+    // body gradient (darker along edges)
+    const grad = ctx.createLinearGradient(cx - bodyW/2, cy - bodyH/2, cx + bodyW/2, cy + bodyH/2);
+    const base = color || '#7b5f41';
+    grad.addColorStop(0, shade(base, -6));
+    grad.addColorStop(1, shade(base, -22));
+    ctx.fillStyle = grad;
+    roundRectPath(ctx, cx - bodyW/2, cy - bodyH/2, bodyW, bodyH, Math.max(6, radius * 0.12));
+    ctx.fill();
+
+    // dorsal fur stripe (subtle darker patch along top)
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(cx - bodyW * 0.08, cy - bodyH * 0.06, bodyW * 0.55, bodyH * 0.45, -0.18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // shoulders / neck seen from back (small hump)
+    ctx.fillStyle = shade(base, -14);
+    ctx.beginPath();
+    ctx.ellipse(cx - bodyW * 0.18, cy - bodyH * 0.45, bodyW * 0.36, bodyH * 0.32, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ears (viewed from rear: triangular shapes pointing slightly out/back)
+    ctx.fillStyle = shade(base, -10);
+    ctx.beginPath();
+    ctx.moveTo(cx - radius * 0.95, cy - radius * 0.95);
+    ctx.lineTo(cx - radius * 0.85, cy - radius * 1.24);
+    ctx.lineTo(cx - radius * 0.68, cy - radius * 0.86);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(cx - radius * 0.62, cy - radius * 0.95);
+    ctx.lineTo(cx - radius * 0.52, cy - radius * 1.18);
+    ctx.lineTo(cx - radius * 0.38, cy - radius * 0.86);
+    ctx.closePath();
+    ctx.fill();
+
+    // tail from back (curled to right)
+    ctx.save();
+    ctx.translate(cx + bodyW * 0.45, cy - bodyH * 0.05);
+    ctx.rotate(0.55);
+    const tailW = Math.max(8, radius * 0.42);
+    const tailH = Math.max(4, radius * 0.18);
+    const tailGrad = ctx.createLinearGradient(-tailW, -tailH, tailW, tailH);
+    tailGrad.addColorStop(0, shade(base, -8));
+    tailGrad.addColorStop(1, shade(base, -30));
+    ctx.fillStyle = tailGrad;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, tailW * 1.1, tailW * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // small back highlights
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(cx - bodyW*0.2, cy - bodyH*0.18, bodyW*0.18, bodyH*0.12, -0.12, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // outline
+    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+    ctx.lineWidth = Math.max(1, radius * 0.08);
+    roundRectPath(ctx, cx - bodyW/2, cy - bodyH/2, bodyW, bodyH, Math.max(6, radius * 0.12));
+    ctx.stroke();
+
+  } else if (type === 'goblin') {
+    // Top-down rear goblin: round hood/back, small shoulders, backpack/pack detail.
+    const bodyW = radius * 1.4;
+    const bodyH = radius * 1.0;
+    const base = color || '#6fb64b';
+
+    // cloak / back
+    const g = ctx.createLinearGradient(cx - bodyW/2, cy - bodyH/2, cx + bodyW/2, cy + bodyH/2);
+    g.addColorStop(0, shade(base, -6));
+    g.addColorStop(1, shade(base, -22));
+    ctx.fillStyle = g;
+    roundRectPath(ctx, cx - bodyW/2, cy - bodyH/2, bodyW, bodyH, Math.max(8, radius * 0.2));
+    ctx.fill();
+
+    // hood seam near top (rear of head)
+    ctx.fillStyle = shade(base, -16);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - bodyH*0.45, bodyW*0.38, bodyH*0.36, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // small backpack / pack on the lower back
+    ctx.fillStyle = '#5b3f2e';
+    roundRectPath(ctx, cx - bodyW*0.22, cy + bodyH*0.05, bodyW*0.44, bodyH*0.28, Math.max(4, radius * 0.08));
+    ctx.fill();
+
+    // shoulder patches
+    ctx.fillStyle = shade('#5b402e', -8);
+    ctx.beginPath();
+    ctx.ellipse(cx - bodyW*0.36, cy - bodyH*0.08, bodyW*0.16, bodyH*0.14, -0.08, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + bodyW*0.36, cy - bodyH*0.08, bodyW*0.16, bodyH*0.14, 0.08, 0, Math.PI*2);
+    ctx.fill();
+
+    // subtle back crease highlight
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - 2, bodyW*0.22, bodyH*0.12, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // ears (small triangular behind hood)
+    ctx.fillStyle = shade(base, -18);
+    ctx.beginPath();
+    ctx.moveTo(cx - bodyW*0.46, cy - bodyH*0.5);
+    ctx.lineTo(cx - bodyW*0.58, cy - bodyH*0.66);
+    ctx.lineTo(cx - bodyW*0.34, cy - bodyH*0.6);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(cx + bodyW*0.46, cy - bodyH*0.5);
+    ctx.lineTo(cx + bodyW*0.58, cy - bodyH*0.66);
+    ctx.lineTo(cx + bodyW*0.34, cy - bodyH*0.6);
+    ctx.closePath();
+    ctx.fill();
+
+    // outline
+    ctx.strokeStyle = 'rgba(0,0,0,0.26)';
+    ctx.lineWidth = Math.max(1, radius * 0.06);
+    roundRectPath(ctx, cx - bodyW/2, cy - bodyH/2, bodyW, bodyH, Math.max(6, radius * 0.14));
+    ctx.stroke();
+
+  } else if (type === 'golem') {
+    // Top-down rear golem: broad back plates and visible plating layers.
+    const bodyW = radius * 1.9;
+    const bodyH = radius * 1.4;
+    const bx = cx - bodyW / 2;
+    const by = cy - bodyH / 2;
+
+    // main back plate
+    const stoneA = '#9e9e9e';
+    const stoneB = '#6e6e6e';
+    const grad = ctx.createLinearGradient(bx, by, bx + bodyW, by + bodyH);
+    grad.addColorStop(0, stoneA);
+    grad.addColorStop(1, stoneB);
+    ctx.fillStyle = grad;
+    roundRectPath(ctx, bx, by, bodyW, bodyH, Math.max(8, radius * 0.12));
+    ctx.fill();
+
+    // layered plates (horizontal bands across the back)
+    ctx.fillStyle = shade('#bdbdbd', -8);
+    const plateCount = 3;
+    for (let i = 0; i < plateCount; i++) {
+      const h = bodyH * 0.18;
+      const y = by + i * (h + 4) + bodyH * 0.06;
+      roundRectPath(ctx, bx + bodyW * 0.06, y, bodyW * 0.88, h, Math.max(4, radius * 0.06));
+      ctx.fill();
+    }
+
+    // rear vents / cracks
+    ctx.strokeStyle = 'rgba(40,40,40,0.7)';
+    ctx.lineWidth = Math.max(1, radius * 0.06);
+    ctx.beginPath();
+    ctx.moveTo(bx + bodyW * 0.32, by + bodyH * 0.35);
+    ctx.lineTo(bx + bodyW * 0.32, by + bodyH * 0.7);
+    ctx.moveTo(bx + bodyW * 0.6, by + bodyH * 0.3);
+    ctx.lineTo(bx + bodyW * 0.6, by + bodyH * 0.65);
+    ctx.stroke();
+
+    // small back-core glow seen from rear (faint)
+    const coreX = cx;
+    const coreY = by + bodyH * 0.55;
+    const coreR = Math.max(6, radius * 0.5);
+    const coreG = ctx.createRadialGradient(coreX, coreY, 0, coreX, coreY, coreR * 1.5);
+    coreG.addColorStop(0, 'rgba(255,140,50,0.85)');
+    coreG.addColorStop(1, 'rgba(255,140,50,0.03)');
+    ctx.fillStyle = coreG;
+    ctx.beginPath();
+    ctx.arc(coreX, coreY, coreR, 0, Math.PI * 2);
+    ctx.fill();
+
+    // outline
+    ctx.strokeStyle = 'rgba(0,0,0,0.32)';
+    ctx.lineWidth = Math.max(1.4, radius * 0.08);
+    roundRectPath(ctx, bx, by, bodyW, bodyH, Math.max(8, radius * 0.12));
+    ctx.stroke();
+
+  } else {
+    // fallback: top-down circle/back
+    const bodyR = radius;
+    ctx.fillStyle = color || '#9c9c9c';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, bodyR, bodyR * 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = Math.max(1, radius * 0.06);
+    ctx.stroke();
+  }
+
+  return canvas;
+}
+
+// Public API: draw mob at its interpolated display position.
+// rm: { displayX, displayY, radius, type, color, alpha, stunnedUntil }
 export function drawMob(mainCtx, rm, opts = {}) {
-  // opts: scale (1), showStun (true), alpha override
   const alpha = (typeof opts.alpha === 'number') ? opts.alpha : (rm.alpha != null ? rm.alpha : 1.0);
   const scale = opts.scale || 1.0;
   const typ = (rm.type || '').toLowerCase();
@@ -298,12 +285,11 @@ export function drawMob(mainCtx, rm, opts = {}) {
 
   mainCtx.save();
   mainCtx.globalAlpha = alpha != null ? alpha : 1.0;
-  // draw sprite centered at mob world coordinates
   const spriteW = sprite.width;
   const spriteH = sprite.height;
   mainCtx.drawImage(sprite, cx - spriteW / 2, cy - spriteH / 2, spriteW, spriteH);
 
-  // Optional stun indicator
+  // stun indicator (above)
   if (rm.stunnedUntil && rm.stunnedUntil > Date.now()) {
     mainCtx.save();
     mainCtx.globalAlpha = 0.95;

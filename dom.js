@@ -36,6 +36,16 @@ const clickMovementCheckbox = document.getElementById('clickMovement');
 const graphicsQuality = document.getElementById('graphicsQuality');
 const showCoordinatesCheckbox = document.getElementById('showCoordinates');
 
+// Small helper: notify server of equipment changes so server-side auto-heal uses authoritative maxHp.
+function sendEquipUpdate(slotIndex) {
+  try {
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+      const it = (state.equipment && state.equipment[slotIndex]) ? state.equipment[slotIndex] : null;
+      state.ws.send(JSON.stringify({ t: 'equip', slot: Number(slotIndex), item: it }));
+    }
+  } catch (e) {}
+}
+
 // Skill tooltip (DOM element)
 const skillTooltip = document.createElement('div');
 skillTooltip.id = 'skillTooltip';
@@ -475,8 +485,8 @@ export function hideSkillTooltip() {
   skillTooltip.style.display = 'none';
 }
 
-// Helper to create an <img> element for an item with @2x fallback attempt.
-// Returns the created <img> element. It will try @2x first on DPR>=2 then fallback to base src on error.
+// Helper to create an <img> element for an item with no "@2x" derivation.
+// Returns the created <img> element.
 function createItemImageElement(it, cssFit = 'contain') {
   const img = new Image();
   img.style.width = '100%';
@@ -484,12 +494,11 @@ function createItemImageElement(it, cssFit = 'contain') {
   img.style.objectFit = cssFit;
   img.alt = it.name || 'item';
 
-  // Use the exact provided path only — do not attempt to derive "@2x" versions.
-  // Some deployments do not provide @2x files and attempting to load them creates 404s in console.
+  // Use the exact provided path only — avoid attempting @2x derivation that may 404.
   img.src = it.img;
 
   img.onerror = () => {
-    // keep fallback handling to be done by callers via 'error' event attached there
+    // caller will handle fallback by listening to 'error'
   };
   return img;
 }
@@ -696,23 +705,30 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
       if (!item) { showTransientMessage('No item to move', 900); return; }
       if (state.inventory[destIdx]) {
         const dstItem = state.inventory[destIdx];
+        // move gear -> inventory, and place dstItem into gear slot
         state.inventory[destIdx] = item;
-        state.equipItem(srcSlot, dstItem);
+        state.equipment[srcSlot] = dstItem;
+        // apply bonuses locally
         state.applyEquipmentBonuses();
         updateInventorySlotVisual(destIdx);
         updateSlotVisual(srcSlot);
         updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage('Swapped gear and inventory item', 1000);
+        // notify server: slot srcSlot now contains dstItem (or null)
+        sendEquipUpdate(srcSlot);
       } else {
+        // move gear -> inventory, unequip slot
         state.inventory[destIdx] = item;
         state.unequipItem(srcSlot);
-        state.applyEquipmentBonuses();
+        // apply bonuses locally already done by unequipItem
         updateInventorySlotVisual(destIdx);
         updateSlotVisual(srcSlot);
         updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage('Moved to inventory', 900);
+        // notify server that slot srcSlot is now empty
+        sendEquipUpdate(srcSlot);
       }
     } else if (data.source === 'external') {
       const it = data.item;
@@ -787,14 +803,13 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       // If item has image and it's already cached/loaded, draw it to drag image.
       if (it.img) {
         const img = new Image();
-        img.src = it.img; // DO NOT attempt @2x derivation
+        img.src = it.img; // do NOT attempt @2x derivation
         if (img.complete && img.naturalWidth > 0) {
           const pad = 6;
           c.drawImage(img, pad, pad, 64 - pad*2, 64 - pad*2);
           try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
           return;
         }
-        // If image is not already loaded, don't wait — fall back to glyph so drag image is immediate.
       }
 
       // glyph fallback
@@ -829,20 +844,27 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       if (!existing) {
         state.equipItem(dst, item);
         state.inventory[srcInv] = null;
-        state.applyEquipmentBonuses();
-        updateSlotVisual(dst);
+        // visuals & stats
         updateInventorySlotVisual(srcInv);
+        updateSlotVisual(dst);
+        updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage(`Equipped ${item.name}`, 1000);
+        // notify server about updated equip
+        sendEquipUpdate(dst);
       } else {
+        // swap inventory <-> equipment
         state.equipment[dst] = item;
         state.inventory[srcInv] = existing;
+        // apply bonuses locally
         state.applyEquipmentBonuses();
         updateSlotVisual(dst);
         updateInventorySlotVisual(srcInv);
         updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage('Swapped with inventory item', 1000);
+        // notify server about updated equip slot
+        sendEquipUpdate(dst);
       }
     } else if (data.source === 'gear') {
       const srcGear = Number(data.index);
@@ -856,6 +878,9 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       updateSlotVisual(srcGear);
       updateStatsBox();
       showTransientMessage('Swapped gear slots', 900);
+      // notify server for both changed slots
+      sendEquipUpdate(dst);
+      sendEquipUpdate(srcGear);
     } else if (data.source === 'external') {
       const it = data.item;
       if (!it) return;
@@ -866,6 +891,7 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
         updateSlotVisual(dst);
         updateStatsBox();
         showTransientMessage(`Equipped ${it.name}`, 900);
+        sendEquipUpdate(dst);
       } else {
         const free = state.inventory.findIndex(s => !s);
         if (free >= 0) {
@@ -876,6 +902,7 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
           updateSlotVisual(dst);
           updateStatsBox();
           showTransientMessage(`Equipped ${it.name} and moved old item to inventory`, 1200);
+          sendEquipUpdate(dst);
         } else {
           showTransientMessage('Inventory full — cannot equip', 1200);
         }
@@ -894,6 +921,8 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       updateSlotVisual(idx);
       updateStatsBox();
       showTransientMessage('Unequipped to inventory', 1000);
+      // notify server slot is now empty
+      sendEquipUpdate(idx);
     } else {
       showTransientMessage('Inventory full — cannot unequip', 1200);
     }
@@ -1060,7 +1089,7 @@ function updateInventorySlotVisual(slotIndex) {
     return;
   }
 
-  // If item has an image path (it.img), show it (with @2x fallback)
+  // If item has an image path (it.img), show it
   if (it.img && typeof it.img === 'string') {
     const img = createItemImageElement(it, 'contain');
     img.addEventListener('error', () => {

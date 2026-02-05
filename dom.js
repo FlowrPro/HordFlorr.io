@@ -109,9 +109,6 @@ export function showItemTooltip(it, x, y) {
 }
 export function hideItemTooltip() { try { itemTooltip.style.display = 'none'; } catch (e) {} }
 
-document.body.appendChild(skillTooltip);
-document.body.appendChild(itemTooltip);
-
 // Transient top-center message (for non-chat notifications)
 const transientMessage = document.createElement('div');
 transientMessage.id = 'transientMessage';

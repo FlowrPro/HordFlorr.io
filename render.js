@@ -6,7 +6,7 @@ import dom from './dom.js';
 import { getHotbarSlotUnderPointer } from './input.js'; // use the single implementation exported by input.js
 import { preloadTextures, getTexturePattern } from './textures.js';
 import { getSkillIcon } from './icons.js'; // <-- imported so we can draw real icons when loaded
-import { drawMob } from './mob_render.js'; // new procedural mob renderer
+import { drawMob, preloadMobSprites } from './mob_render.js'; // <-- sprite-based mob renderer
 
 // --- Canvas setup (DPR aware) ---
 export function resizeCanvas() {
@@ -30,6 +30,15 @@ resizeCanvas();
     ]).catch(() => {});
   } catch (e) {}
 })();
+
+// Preload mob sprites (non-blocking). Expect files at assets/mobs/{goblin,wolf,golem}.webp
+try {
+  preloadMobSprites([
+    { type: 'goblin', src: 'assets/mobs/goblin.webp' },
+    { type: 'wolf',   src: 'assets/mobs/wolf.webp' },
+    { type: 'golem',  src: 'assets/mobs/golem.webp' }
+  ]).catch(() => {});
+} catch (e) { /* ignore */ }
 
 // --- Jagged wall params (tweak these to change the 'jaggedness') ---
 const JAG_SEGMENT_LENGTH = 20; // pixels per segment along each wall edge
@@ -437,7 +446,7 @@ function drawWorld(vw, vh, dt) {
   }
   dom.ctx.restore();
 
-  // draw mobs (interpolated + spawn/fade + hp bar) using procedural sprites
+  // draw mobs (interpolated + spawn/fade + hp bar) using sprite-based drawMob
   dom.ctx.save();
   for (const rm of state.remoteMobs.values()) {
     // interpolate
@@ -467,28 +476,6 @@ function drawWorld(vw, vh, dt) {
       dom.ctx.strokeStyle = 'rgba(0,0,0,0.6)';
       dom.ctx.stroke();
       dom.ctx.globalAlpha = 1.0;
-    }
-
-    // hp bar
-    if (typeof rm.hp === 'number' && typeof rm.maxHp === 'number' && rm.maxHp > 0) {
-      const pct = Math.max(0, Math.min(1, rm.hp / rm.maxHp));
-      const barW = Math.max(20, (rm.radius || 14) * 1.8);
-      const barH = 6;
-      const bx = rm.displayX - barW / 2;
-      const by = rm.displayY - (rm.radius || 14) - 10;
-      dom.ctx.globalAlpha = 0.9;
-      dom.ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      roundRectScreen(dom.ctx, bx - 1, by - 1, barW + 2, barH + 2, 3, true, false);
-      dom.ctx.fillStyle = '#6b6b6b';
-      roundRectScreen(dom.ctx, bx, by, barW, barH, 3, true, false);
-      dom.ctx.fillStyle = '#e74c3c';
-      roundRectScreen(dom.ctx, bx, by, Math.max(2, barW * pct), barH, 3, true, false);
-      dom.ctx.globalAlpha = 1.0;
-    }
-
-    // stun visual (drawMob also draws a simple stun glyph, but keep this for clarity)
-    if (rm.stunnedUntil && rm.stunnedUntil > Date.now()) {
-      dom.ctx.font = '14px system-ui, Arial'; dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'bottom'; dom.ctx.fillStyle = 'rgba(255,255,255,0.95)'; dom.ctx.fillText('❌', rm.displayX, rm.displayY - rm.radius - 12);
     }
   }
   dom.ctx.restore();

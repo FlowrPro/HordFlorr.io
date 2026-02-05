@@ -1,7 +1,13 @@
 // Sprite-based mob renderer for Moborr.io
 // - preloadMobSprites(manifest?) loads images into a small cache
-// - drawMob(ctx, rm, opts?) draws a mob using its sprite (fallback to plain circle)
+// - getMobSprite(type) returns the loaded HTMLImageElement or null
+// - drawMob(ctx, rm, opts?) draws a mob using its sprite (fallback to plain shape)
 // Place mob images at: assets/mobs/<type>.webp (e.g. assets/mobs/goblin.webp)
+//
+// Usage:
+//   import { preloadMobSprites, drawMob } from './mob_render.js';
+//   await preloadMobSprites(); // optional
+//   drawMob(ctx, rm);
 
 const spriteCache = Object.create(null);
 // spriteCache[type] = { img: HTMLImageElement, status: 'loading'|'loaded'|'error', src: string }
@@ -142,7 +148,7 @@ function drawMobFallback(ctx, rm, opts = {}) {
 // Public: drawMob(ctx, rm, opts?).
 // - ctx: canvas 2d context (in world-space, as used in render.js)
 // - rm: remote mob object (displayX, displayY, radius, type, color, alpha, hp, maxHp, stunnedUntil)
-// - opts: { scale?, alpha? }
+// - opts: { scale?, alpha?, spriteScale? }
 export function drawMob(ctx, rm, opts = {}) {
   const key = makeKey(rm.type);
   const entry = spriteCache[key];
@@ -154,11 +160,9 @@ export function drawMob(ctx, rm, opts = {}) {
     const cx = rm.displayX || rm.targetX || 0;
     const cy = rm.displayY || rm.targetY || 0;
     // scale image to fit mob radius:
-    // desired width/height: diameter * spriteScale. spriteScale defaults to 1.6 for nicer coverage.
     const spriteScale = (opts.spriteScale || 1.6);
     const diameter = Math.max(8, (rm.radius || 16) * 2 * (opts.scale || 1));
     const w = diameter * spriteScale;
-    // Maintain image aspect ratio
     const aspect = img.naturalWidth / img.naturalHeight || 1;
     const h = w / aspect;
     ctx.save();
@@ -166,7 +170,7 @@ export function drawMob(ctx, rm, opts = {}) {
     ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
     ctx.restore();
 
-    // Draw HP bar and stun indicator on top (so consistent with fallback)
+    // Draw HP bar and stun indicator on top
     if (typeof rm.hp === 'number' && typeof rm.maxHp === 'number' && rm.maxHp > 0) {
       const pct = Math.max(0, Math.min(1, rm.hp / rm.maxHp));
       const bw = Math.max(20, (rm.radius || 16) * 1.6);

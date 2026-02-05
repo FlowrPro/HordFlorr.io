@@ -564,7 +564,7 @@ export function handleServerMessage(msg) {
     const id = msg.id;
     const kind = msg.kind;
     const until = msg.until || 0;
-    if (kind === 'player' && String(id) === String(state.player.id)) {
+    if (kind === 'player' and String(id) === String(state.player.id)) {
       state.player.stunnedUntil = until;
       state.player.localBuffs.push({ type: 'stuck', multiplier: 1.0, until });
     } else if (kind === 'mob' && state.remoteMobs.has(id)) {
@@ -680,4 +680,39 @@ export function handleServerMessage(msg) {
       }
     }
   }
+}
+
+// Chat send helper (client-side)
+export function sendChat() {
+  if (!state.dom.chatInput || !state.dom.chatInput.value) return;
+  const txt = state.dom.chatInput.value.trim();
+  if (!txt) { dom.unfocusChat(); return; }
+  const chatId = `${Date.now()}-${Math.random().toString(36).slice(2,9)}`;
+  const ts = Date.now();
+  appendChatMessage({ name: state.player.name || 'You', text: txt, ts, chatId, local: true });
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    try {
+      state.ws.send(JSON.stringify({ t: 'chat', text: txt, chatId }));
+    } catch (e) {}
+  } else {
+    appendChatMessage({ text: 'Not connected — message not sent', ts: Date.now(), system: true });
+    state.pendingChatIds.delete(chatId);
+  }
+  state.dom.chatInput.value = '';
+  dom.unfocusChat();
+}
+
+// Expose a function to set the interval externally (used by main wiring)
+export function setSendInputIntervalHandle(handle) {
+  state.sendInputInterval = handle;
+}
+
+// Provide setter for ws (for tests or future use)
+export function getWs() { return state.ws; }
+export function setWs(w) { state.ws = w; ws = w; }
+
+// Cleanup exported for external control
+export function cancelReconnectAndHideUI() {
+  cancelReconnect();
+  hideReconnectOverlay();
 }

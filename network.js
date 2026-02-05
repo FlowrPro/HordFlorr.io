@@ -206,8 +206,21 @@ export function handleServerMessage(msg) {
       if (msg.player.class) state.player.class = msg.player.class;
       // If server supplies a base maxHp on welcome, treat it as the authoritative base
       if (typeof msg.player.maxHp === 'number') {
-        state.player._baseMaxHp = msg.player.maxHp;
-        state.player.maxHp = msg.player.maxHp;
+        // Server sent authoritative maxHp (which already includes equipment bonuses).
+        // Compute client's local equipment HP bonus so we can recover the server's base value
+        // and avoid applying equipment twice.
+        let equipBonus = 0;
+        try {
+          if (Array.isArray(state.equipment)) {
+            for (const it of state.equipment) {
+              if (it && it.stats && typeof it.stats.maxHp === 'number') equipBonus += Number(it.stats.maxHp);
+            }
+          }
+        } catch (e) { equipBonus = 0; }
+        // Ensure base is at least 1
+        state.player._baseMaxHp = Math.max(1, Math.round(Number(msg.player.maxHp) - equipBonus));
+        // Keep authoritative (server) maxHp as shown immediately
+        state.player.maxHp = Number(msg.player.maxHp);
         // ensure current HP isn't higher than max
         state.player.hp = Math.min(state.player.hp || state.player.maxHp, state.player.maxHp);
       }
@@ -270,10 +283,20 @@ export function handleServerMessage(msg) {
 
         // If server provided a base maxHp in the snapshot, update our stored base so equipment bonuses use authoritative base.
         if (typeof sp.maxHp === 'number') {
-          // store the server base so applyEquipmentBonuses will add equipment bonuses on top of server base
-          state.player._baseMaxHp = sp.maxHp;
-          // set authoritative value (we'll reapply equipment bonuses next)
-          state.player.maxHp = sp.maxHp;
+          // Server provided an authoritative maxHp (already includes equipment bonuses).
+          // Subtract locally-known equipment bonuses to recover the server's "base" maxHp
+          // and avoid double-applying equipment when applyEquipmentBonuses runs.
+          let equipBonus = 0;
+          try {
+            if (Array.isArray(state.equipment)) {
+              for (const it of state.equipment) {
+                if (it && it.stats && typeof it.stats.maxHp === 'number') equipBonus += Number(it.stats.maxHp);
+              }
+            }
+          } catch (e) { equipBonus = 0; }
+          state.player._baseMaxHp = Math.max(1, Math.round(Number(sp.maxHp) - equipBonus));
+          // set authoritative value for immediate UI consistency
+          state.player.maxHp = Number(sp.maxHp);
         }
 
         // Ensure local HP is updated from snapshot so UI can show correct values
@@ -657,39 +680,4 @@ export function handleServerMessage(msg) {
       }
     }
   }
-}
-
-// Chat send helper (client-side)
-export function sendChat() {
-  if (!state.dom.chatInput || !state.dom.chatInput.value) return;
-  const txt = state.dom.chatInput.value.trim();
-  if (!txt) { dom.unfocusChat(); return; }
-  const chatId = `${Date.now()}-${Math.random().toString(36).slice(2,9)}`;
-  const ts = Date.now();
-  appendChatMessage({ name: state.player.name || 'You', text: txt, ts, chatId, local: true });
-  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-    try {
-      state.ws.send(JSON.stringify({ t: 'chat', text: txt, chatId }));
-    } catch (e) {}
-  } else {
-    appendChatMessage({ text: 'Not connected — message not sent', ts: Date.now(), system: true });
-    state.pendingChatIds.delete(chatId);
-  }
-  state.dom.chatInput.value = '';
-  dom.unfocusChat();
-}
-
-// Expose a function to set the interval externally (used by main wiring)
-export function setSendInputIntervalHandle(handle) {
-  state.sendInputInterval = handle;
-}
-
-// Provide setter for ws (for tests or future use)
-export function getWs() { return state.ws; }
-export function setWs(w) { state.ws = w; ws = w; }
-
-// Cleanup exported for external control
-export function cancelReconnectAndHideUI() {
-  cancelReconnect();
-  hideReconnectOverlay();
 }

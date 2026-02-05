@@ -34,9 +34,9 @@ resizeCanvas();
 // Preload mob sprites (non-blocking). Expect files at assets/mobs/{goblin,wolf,golem}.webp
 try {
   preloadMobSprites([
-    { type: 'goblin', src: 'assets/mobs/goblin.webp' },
-    { type: 'wolf',   src: 'assets/mobs/wolf.webp' },
-    { type: 'golem',  src: 'assets/mobs/golem.webp' }
+    { type: 'goblin', src: 'assets/mobs/goblin.png' },
+    { type: 'wolf',   src: 'assets/mobs/wolf.png' },
+    { type: 'golem',  src: 'assets/mobs/golem.png' }
   ]).catch(() => {});
 } catch (e) { /* ignore */ }
 

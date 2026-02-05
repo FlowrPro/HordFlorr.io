@@ -564,7 +564,7 @@ export function handleServerMessage(msg) {
     const id = msg.id;
     const kind = msg.kind;
     const until = msg.until || 0;
-    if (kind === 'player' and String(id) === String(state.player.id)) {
+    if (kind === 'player' && String(id) === String(state.player.id)) {
       state.player.stunnedUntil = until;
       state.player.localBuffs.push({ type: 'stuck', multiplier: 1.0, until });
     } else if (kind === 'mob' && state.remoteMobs.has(id)) {

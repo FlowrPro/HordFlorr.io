@@ -141,12 +141,6 @@ export const state = (function(){
   // equipment items are objects like { id, name, stats: { maxHp:+, baseDamage:+, baseSpeed:+, damageMul:+, buffDurationMul:+ } }
   const equipment = new Array(EQUIP_SLOTS).fill(null);
 
-  // --- Inventory ---
-  const INV_SLOTS = 12;
-  // inventory stores item objects or null. An item is expected to be an object like:
-  // { id: 'unique', name: 'Iron Helm', icon: '🪖', stats: { maxHp: 50, baseDamage: 5, ... } }
-  const inventory = new Array(INV_SLOTS).fill(null);
-
   // --- NETWORK ---
   let ws = null;
   let sendInputInterval = null;
@@ -189,15 +183,14 @@ export const state = (function(){
     }
 
     // apply to player (store derived values, but keep base backups)
+    // NOTE: Do NOT increase player's current HP here based on equipment.
+    // Server is authoritative for current HP; raising hp locally causes the next server snapshot
+    // to look like the player lost HP (server still reports lower hp) and will repeatedly emit
+    // damage/heal remoteEffects. Instead, compute new maxHp and clamp current HP to max.
     const prevMax = player.maxHp || player._baseMaxHp;
     player.maxHp = Math.max(1, Math.round((player._baseMaxHp || 200) + bonus.maxHp));
-    // adjust current HP so the player benefits from increased max HP, clamp if lowered
-    const delta = player.maxHp - prevMax;
-    if (delta > 0) {
-      player.hp = Math.min(player.maxHp, (player.hp || prevMax) + delta);
-    } else {
-      player.hp = Math.min(player.maxHp, player.hp || player.maxHp);
-    }
+    // Only clamp current HP down if it exceeds new max; do not raise it above server-provided value.
+    player.hp = Math.min(player.maxHp, (typeof player.hp === 'number' ? player.hp : player.maxHp));
 
     player.baseDamage = Math.max(0, (player._baseBaseDamage || 18) + bonus.baseDamage);
     player.baseSpeed = Math.max(1, (player._baseBaseSpeed || 380) + bonus.baseSpeed);
@@ -252,9 +245,6 @@ export const state = (function(){
     equipItem,
     unequipItem,
     applyEquipmentBonuses,
-    // inventory
-    INV_SLOTS,
-    inventory,
     // network vars
     ws,
     sendInputInterval,

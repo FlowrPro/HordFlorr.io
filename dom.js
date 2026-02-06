@@ -520,14 +520,6 @@ function createDragPreviewImage(item) {
     if (item.img && typeof item.img === 'string') {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        // This runs async, but we return the canvas immediately
-        // The drag image is captured at dragstart, so we set it synchronously below
-      };
-      img.onerror = () => {
-        // Fallback to icon/text
-        drawItemFallback(c, item);
-      };
       img.src = item.img;
       
       // Draw to canvas if already loaded
@@ -733,6 +725,7 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
   inner.style.justifyContent = 'center';
   slot.appendChild(inner);
 
+  slot.addEventListener('dragstart', inventoryDragStartHandler);
   slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.14)'; });
   slot.addEventListener('dragleave', (e) => { slot.style.outline = ''; });
   slot.addEventListener('drop', (e) => {
@@ -1106,7 +1099,6 @@ function updateInventorySlotVisual(slotIndex) {
     plus.style.opacity = '0.0';
     inner.appendChild(plus);
     slotEl.draggable = false;
-    attachInventoryDragHandler(slotEl); // FIXED: remove drag handler
     slotEl.onmouseenter = null;
     slotEl.onmouseleave = null;
     slotEl.onmousemove = null;
@@ -1127,8 +1119,6 @@ function updateInventorySlotVisual(slotIndex) {
     inner.appendChild(img);
     slotEl.title = `${it.name || 'Item'}`;
     slotEl.draggable = true; // FIXED: set draggable=true for items
-    // attach drag handler
-    attachInventoryDragHandler(slotEl);
     // tooltip
     slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
     slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
@@ -1144,7 +1134,6 @@ function updateInventorySlotVisual(slotIndex) {
   inner.appendChild(icon);
   slotEl.title = `${it.name || 'Item'}`;
   slotEl.draggable = true; // FIXED: set draggable=true for items
-  attachInventoryDragHandler(slotEl);
   slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
   slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
   slotEl.onmouseleave = () => { hideItemTooltip(); };
@@ -1224,4 +1213,150 @@ updateAllSlotVisuals();
     dragOffsetY = clientY - rect.top;
     dragging = true;
     gearPanel.style.right = '';
-    gearPanel.style
+    gearPanel.style.left = rect.left + 'px';
+    gearPanel.style.top = rect.top + 'px';
+    document.body.style.userSelect = 'none';
+    dragHandle.style.cursor = 'grabbing';
+  }
+
+    function moveDrag(clientX, clientY) {
+    if (!dragging) return;
+    const panelW = gearPanel.offsetWidth;
+    const panelH = gearPanel.offsetHeight;
+    let left = clientX - dragOffsetX;
+    let top = clientY - dragOffsetY;
+    const clamped = clampPosition(left, top, panelW, panelH);
+    gearPanel.style.left = clamped.left + 'px';
+    gearPanel.style.top = clamped.top + 'px';
+  }
+
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.userSelect = '';
+    dragHandle.style.cursor = 'grab';
+    try {
+      const rect = gearPanel.getBoundingClientRect();
+      const pos = { left: Math.round(rect.left), top: Math.round(rect.top) };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
+    } catch (e) {}
+  }
+
+  dragHandle.addEventListener('mousedown', (ev) => {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    startDrag(ev.clientX, ev.clientY);
+  });
+  window.addEventListener('mousemove', (ev) => {
+    if (!dragging) return;
+    ev.preventDefault();
+    moveDrag(ev.clientX, ev.clientY);
+  });
+  window.addEventListener('mouseup', () => { endDrag(); });
+
+  dragHandle.addEventListener('touchstart', (ev) => {
+    if (!ev.touches || !ev.touches[0]) return;
+    const t = ev.touches[0];
+    ev.preventDefault();
+    startDrag(t.clientX, t.clientY);
+  }, { passive: false });
+  window.addEventListener('touchmove', (ev) => {
+    if (!dragging || !ev.touches || !ev.touches[0]) return;
+    const t = ev.touches[0];
+    ev.preventDefault();
+    moveDrag(t.clientX, t.clientY);
+  }, { passive: false });
+  window.addEventListener('touchend', () => { endDrag(); });
+})();
+
+// --- Inventory show/hide helpers ---
+export function showInventory() {
+  try {
+    inventoryContainer.style.display = 'grid';
+    updateInventoryVisuals();
+  } catch (e) {}
+}
+export function hideInventory() {
+  try {
+    inventoryContainer.style.display = 'none';
+  } catch (e) {}
+}
+
+// --- Export & extend state.dom with new UI pieces ---
+state.dom.gearButton = gearButton;
+state.dom.gearPanel = gearPanel;
+state.dom.gearSlots = gearSlots;
+state.dom.updateSlotVisual = updateSlotVisual;
+state.dom.updateAllSlotVisuals = updateAllSlotVisuals;
+state.dom.showGearPanel = () => { updateAllSlotVisuals(); updateStatsBox(); gearPanel.style.display = 'block'; };
+state.dom.hideGearPanel = () => { gearPanel.style.display = 'none'; };
+
+state.dom.inventoryContainer = inventoryContainer;
+state.dom.inventorySlots = inventorySlots;
+state.dom.addItemToInventory = addItemToInventory;
+state.dom.removeItemFromInventory = removeItemFromInventory;
+state.dom.updateInventoryVisuals = updateInventoryVisuals;
+state.dom.showInventory = showInventory;
+state.dom.hideInventory = hideInventory;
+
+// Export default convenience object (keeps previous API)
+export default {
+  canvas,
+  ctx,
+  titleScreen,
+  usernameInput,
+  playButton,
+  loadingScreen,
+  loadingPlayerEl,
+  loadingPlayerNameEl,
+  loadingTextEl,
+  chatPanel,
+  chatLog,
+  chatInput,
+  chatSend,
+  settingsBtn,
+  settingsPanel,
+  settingsClose,
+  tabButtons,
+  tabContents,
+  mouseMovementCheckbox,
+  keyboardMovementCheckbox,
+  clickMovementCheckbox,
+  graphicsQuality,
+  showCoordinatesCheckbox,
+  skillTooltip,
+  transientMessage,
+  showTransientMessage,
+  hideTransientMessage,
+  appendChatMessage,
+  focusChat,
+  unfocusChat,
+  loadSettings,
+  saveSettings,
+  setLoadingText,
+  cleanupAfterFailedLoad,
+  showSkillTooltip,
+  hideSkillTooltip,
+  showItemTooltip,
+  hideItemTooltip,
+  showDeathOverlay,
+  hideDeathOverlay,
+  setReconnectCancelCallback,
+  showReconnectOverlay,
+  hideReconnectOverlay,
+  // gear & inventory
+  gearButton,
+  gearPanel,
+  gearSlots,
+  updateSlotVisual,
+  updateAllSlotVisuals,
+  showGearPanel: state.dom.showGearPanel,
+  hideGearPanel: state.dom.hideGearPanel,
+  inventoryContainer,
+  inventorySlots,
+  addItemToInventory,
+  removeItemFromInventory,
+  updateInventoryVisuals,
+  showInventory,
+  hideInventory
+};

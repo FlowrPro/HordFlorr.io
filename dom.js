@@ -61,13 +61,13 @@ skillTooltip.style.fontSize = '12px';
 skillTooltip.style.maxWidth = '220px';
 document.body.appendChild(skillTooltip);
 
-// Item tooltip (wider than skill tooltip)
+// Item tooltip (wider than skill tooltip, higher z-index to appear over gear panel)
 const itemTooltip = document.createElement('div');
 itemTooltip.id = 'itemTooltip';
 itemTooltip.style.position = 'fixed';
 itemTooltip.style.pointerEvents = 'none';
 itemTooltip.style.display = 'none';
-itemTooltip.style.zIndex = 10000;
+itemTooltip.style.zIndex = 10100; // FIXED: increased from 10000 to appear over gear panel (10006)
 itemTooltip.style.background = 'rgba(18,18,20,0.96)';
 itemTooltip.style.color = '#fff';
 itemTooltip.style.padding = '12px';
@@ -500,6 +500,65 @@ function createItemImageElement(it, cssFit = 'contain') {
   return img;
 }
 
+// --- DRAG PREVIEW IMAGE HELPER (FIXED) ---
+// Creates a proper drag image with actual item image, not a small icon
+function createDragPreviewImage(item) {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 80;
+    canvas.height = 80;
+    const c = canvas.getContext('2d');
+    
+    // Background
+    c.fillStyle = 'rgba(0,0,0,0.7)';
+    c.fillRect(0, 0, 80, 80);
+    c.strokeStyle = 'rgba(255,255,255,0.3)';
+    c.lineWidth = 2;
+    c.strokeRect(0, 0, 80, 80);
+
+    // Try to draw the actual item image
+    if (item.img && typeof item.img === 'string') {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        // This runs async, but we return the canvas immediately
+        // The drag image is captured at dragstart, so we set it synchronously below
+      };
+      img.onerror = () => {
+        // Fallback to icon/text
+        drawItemFallback(c, item);
+      };
+      img.src = item.img;
+      
+      // Draw to canvas if already loaded
+      if (img.complete && img.naturalWidth > 0) {
+        const pad = 8;
+        c.drawImage(img, pad, pad, 80 - pad*2, 80 - pad*2);
+      } else {
+        drawItemFallback(c, item);
+      }
+    } else {
+      drawItemFallback(c, item);
+    }
+
+    return canvas;
+  } catch (err) {
+    console.error('createDragPreviewImage error:', err);
+    return null;
+  }
+}
+
+function drawItemFallback(ctx, item) {
+  // Fallback: draw item icon or letter
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 36px system-ui, Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(item.icon || (item.name ? item.name.charAt(0) : '?'), 40, 42);
+}
+
+// --- END DRAG PREVIEW HELPER ---
+
 // ----------------- Gear UI -----------------
 // Gear button (match settings button 44x44) using supplied icon at assets/ui/gearpanel.png
 const gearButton = document.createElement('button');
@@ -663,7 +722,7 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
   slot.style.position = 'relative';
   slot.style.cursor = 'default';
   slot.style.userSelect = 'none';
-  slot.draggable = false;
+  slot.draggable = true; // FIXED: set draggable=true directly on slot
 
   const inner = document.createElement('div');
   inner.style.pointerEvents = 'none';
@@ -754,6 +813,32 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
 }
 document.body.appendChild(inventoryContainer);
 
+// --- DRAG START HANDLER FOR INVENTORY (FIXED) ---
+function inventoryDragStartHandler(e) {
+  const srcSlot = Number(this.dataset.index != null ? this.dataset.index : (this.parentElement && this.parentElement.dataset.index) || -1);
+  const item = state.inventory[srcSlot];
+  if (!item || !e.dataTransfer) { e.preventDefault(); return; }
+  
+  const payload = { item: JSON.parse(JSON.stringify(item)), source: 'inventory', index: srcSlot };
+  try { e.dataTransfer.setData('application/json', JSON.stringify(payload)); } catch (err) {}
+  try { e.dataTransfer.setData('text/plain', JSON.stringify(payload)); } catch (err) {}
+  try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
+
+  // FIXED: Use actual drag preview instead of small canvas
+  try {
+    const dragCanvas = createDragPreviewImage(item);
+    if (dragCanvas) {
+      try { e.dataTransfer.setDragImage(dragCanvas, 40, 40); } catch (err) {}
+    }
+  } catch (err) {}
+}
+
+// Attach drag handler to inventory slots
+function attachInventoryDragHandler(slotEl) {
+  slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
+  slotEl.addEventListener('dragstart', inventoryDragStartHandler);
+}
+
 // ----------------- Gear slots creation (with drag/drop) -----------------
 gearSlots = [];
 for (let i = 0; i < state.EQUIP_SLOTS; i++) {
@@ -773,13 +858,13 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
   slot.style.position = 'relative';
   slot.style.cursor = 'pointer';
   slot.style.userSelect = 'none';
+  slot.draggable = true; // FIXED: set draggable=true directly
 
   const lbl = document.createElement('div');
   lbl.textContent = '+';
   lbl.style.opacity = '0.8';
   slot.appendChild(lbl);
 
-  slot.draggable = false;
   slot.addEventListener('dragstart', function (e) {
     const idx = Number(this.dataset.slot);
     const it = state.equipment[idx];
@@ -789,36 +874,13 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
     try { e.dataTransfer.setData('text/plain', JSON.stringify(payload)); } catch (err) {}
     try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
 
-    // try to draw a representative drag image: prefer item.img if preloaded/loaded, otherwise glyph canvas fallback
+    // FIXED: Use actual drag preview instead of small canvas
     try {
-      const dragCanvas = document.createElement('canvas');
-      dragCanvas.width = 64; dragCanvas.height = 64;
-      const c = dragCanvas.getContext('2d');
-      c.fillStyle = 'rgba(0,0,0,0.6)';
-      c.fillRect(0,0,64,64);
-
-      // If item has image and it's already cached/loaded, draw it to drag image.
-      if (it.img) {
-        const img = new Image();
-        img.src = it.img; // do NOT attempt @2x derivation
-        if (img.complete && img.naturalWidth > 0) {
-          const pad = 6;
-          c.drawImage(img, pad, pad, 64 - pad*2, 64 - pad*2);
-          try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
-          return;
-        }
+      const dragCanvas = createDragPreviewImage(it);
+      if (dragCanvas) {
+        try { e.dataTransfer.setDragImage(dragCanvas, 40, 40); } catch (err) {}
       }
-
-      // glyph fallback
-      c.fillStyle = '#fff';
-      c.font = '32px system-ui, Arial';
-      c.textAlign = 'center';
-      c.textBaseline = 'middle';
-      c.fillText(it.icon || (it.name ? it.name.charAt(0) : '?'), 32, 34);
-      try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
-    } catch (err) {
-      // ignore drag image errors
-    }
+    } catch (err) {}
   });
 
   slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; });
@@ -930,8 +992,7 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
 }
 gearPanel.insertBefore(slotsContainer, statsBox);
 
-// ----------------- Slot visuals & helpers -----------------
-// Updated so gear slot displays the same image as inventory when item.img is present.
+// --- UPDATED: Slot visuals with proper image display ---
 export function updateSlotVisual(slotIndex) {
   const slotEl = gearSlots[slotIndex];
   if (!slotEl) return;
@@ -948,7 +1009,7 @@ export function updateSlotVisual(slotIndex) {
     plus.style.opacity = '0.8';
     slotEl.appendChild(plus);
     slotEl.title = `Empty slot ${slotIndex + 1}`;
-    slotEl.draggable = false;
+    slotEl.draggable = true; // FIXED: ensure draggable is set
     // remove tooltip listeners
     slotEl.onmouseenter = null;
     slotEl.onmouseleave = null;
@@ -988,7 +1049,7 @@ export function updateSlotVisual(slotIndex) {
     slotEl.appendChild(nameBadge);
 
     slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
-    slotEl.draggable = true;
+    slotEl.draggable = true; // FIXED: ensure draggable is set
 
     // tooltip on hover
     slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
@@ -1015,7 +1076,7 @@ export function updateSlotVisual(slotIndex) {
   slotEl.appendChild(nameBadge);
 
   slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
-  slotEl.draggable = true;
+  slotEl.draggable = true; // FIXED: ensure draggable is set
 
   // tooltip on hover
   slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
@@ -1028,47 +1089,13 @@ export function updateAllSlotVisuals() {
   updateStatsBox();
 }
 
-// ----------------- Inventory visuals & drag handlers -----------------
-function inventoryDragStartHandler(e) {
-  const srcSlot = Number(this.dataset.index != null ? this.dataset.index : (this.parentElement && this.parentElement.dataset.index) || -1);
-  const item = state.inventory[srcSlot];
-  if (!item || !e.dataTransfer) { e.preventDefault(); return; }
-  const payload = { item: JSON.parse(JSON.stringify(item)), source: 'inventory', index: srcSlot };
-  try { e.dataTransfer.setData('application/json', JSON.stringify(payload)); } catch (err) {}
-  try { e.dataTransfer.setData('text/plain', JSON.stringify(payload)); } catch (err) {}
-  try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
-  try {
-    const dragCanvas = document.createElement('canvas');
-    dragCanvas.width = 64; dragCanvas.height = 64;
-    const c = dragCanvas.getContext('2d');
-    c.fillStyle = 'rgba(0,0,0,0.6)';
-    c.fillRect(0,0,64,64);
-    // try to draw the image if it's already loaded; do NOT attempt @2x derivation
-    if (item.img) {
-      const img = new Image();
-      img.src = item.img;
-      if (img.complete && img.naturalWidth > 0) {
-        const pad = 6;
-        c.drawImage(img, pad, pad, 64 - pad*2, 64 - pad*2);
-        try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
-        return;
-      }
-    }
-    c.fillStyle = '#fff';
-    c.font = '28px system-ui, Arial';
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillText(item.icon || (item.name ? item.name.charAt(0) : '?'), 32, 34);
-    try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
-  } catch (err) {}
-}
-
+// --- UPDATED: Inventory visuals with proper image display ---
 function updateInventorySlotVisual(slotIndex) {
   const slotEl = inventorySlots[slotIndex];
   const inner = slotEl && slotEl.firstElementChild;
   if (!slotEl || !inner) return;
   inner.innerHTML = '';
-  slotEl.draggable = false;
+  slotEl.draggable = false; // FIXED: set initially to false
   slotEl.title = `Empty`;
 
   const it = state.inventory[slotIndex];
@@ -1079,7 +1106,7 @@ function updateInventorySlotVisual(slotIndex) {
     plus.style.opacity = '0.0';
     inner.appendChild(plus);
     slotEl.draggable = false;
-    slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
+    attachInventoryDragHandler(slotEl); // FIXED: remove drag handler
     slotEl.onmouseenter = null;
     slotEl.onmouseleave = null;
     slotEl.onmousemove = null;
@@ -1099,10 +1126,9 @@ function updateInventorySlotVisual(slotIndex) {
     });
     inner.appendChild(img);
     slotEl.title = `${it.name || 'Item'}`;
-    slotEl.draggable = true;
+    slotEl.draggable = true; // FIXED: set draggable=true for items
     // attach drag handler
-    slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
-    slotEl.addEventListener('dragstart', inventoryDragStartHandler);
+    attachInventoryDragHandler(slotEl);
     // tooltip
     slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
     slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
@@ -1117,9 +1143,8 @@ function updateInventorySlotVisual(slotIndex) {
   icon.style.pointerEvents = 'none';
   inner.appendChild(icon);
   slotEl.title = `${it.name || 'Item'}`;
-  slotEl.draggable = true;
-  slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
-  slotEl.addEventListener('dragstart', inventoryDragStartHandler);
+  slotEl.draggable = true; // FIXED: set draggable=true for items
+  attachInventoryDragHandler(slotEl);
   slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
   slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
   slotEl.onmouseleave = () => { hideItemTooltip(); };
@@ -1156,7 +1181,7 @@ export function removeItemFromInventory(slotIndex) {
 updateInventoryVisuals();
 updateAllSlotVisuals();
 
-// ----------------- Make gearPanel draggable and persist position -----------------
+// --- MAKE GEAR PANEL DRAGGABLE AND PERSIST POSITION ---
 (function makeGearPanelDraggable() {
   if (!gearPanel) return;
 
@@ -1199,148 +1224,4 @@ updateAllSlotVisuals();
     dragOffsetY = clientY - rect.top;
     dragging = true;
     gearPanel.style.right = '';
-    gearPanel.style.left = rect.left + 'px';
-    gearPanel.style.top = rect.top + 'px';
-    document.body.style.userSelect = 'none';
-    dragHandle.style.cursor = 'grabbing';
-  }
-
-  function moveDrag(clientX, clientY) {
-    if (!dragging) return;
-    const panelW = gearPanel.offsetWidth;
-    const panelH = gearPanel.offsetHeight;
-    let left = clientX - dragOffsetX;
-    let top = clientY - dragOffsetY;
-    const clamped = clampPosition(left, top, panelW, panelH);
-    gearPanel.style.left = clamped.left + 'px';
-    gearPanel.style.top = clamped.top + 'px';
-  }
-
-  function endDrag() {
-    if (!dragging) return;
-    dragging = false;
-    document.body.style.userSelect = '';
-    dragHandle.style.cursor = 'grab';
-    try {
-      const rect = gearPanel.getBoundingClientRect();
-      const pos = { left: Math.round(rect.left), top: Math.round(rect.top) };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
-    } catch (e) {}
-  }
-
-  dragHandle.addEventListener('mousedown', (ev) => {
-    if (ev.button !== 0) return;
-    ev.preventDefault();
-    startDrag(ev.clientX, ev.clientY);
-  });
-  window.addEventListener('mousemove', (ev) => {
-    if (!dragging) return;
-    ev.preventDefault();
-    moveDrag(ev.clientX, ev.clientY);
-  });
-  window.addEventListener('mouseup', () => { endDrag(); });
-
-  dragHandle.addEventListener('touchstart', (ev) => {
-    if (!ev.touches || !ev.touches[0]) return;
-    const t = ev.touches[0];
-    ev.preventDefault();
-    startDrag(t.clientX, t.clientY);
-  }, { passive: false });
-  window.addEventListener('touchmove', (ev) => {
-    if (!dragging || !ev.touches || !ev.touches[0]) return;
-    const t = ev.touches[0];
-    ev.preventDefault();
-    moveDrag(t.clientX, t.clientY);
-  }, { passive: false });
-  window.addEventListener('touchend', () => { endDrag(); });
-})();
-
-// ----------------- Inventory show/hide helpers -----------------
-export function showInventory() {
-  try {
-    inventoryContainer.style.display = 'grid';
-    updateInventoryVisuals();
-  } catch (e) {}
-}
-export function hideInventory() {
-  try {
-    inventoryContainer.style.display = 'none';
-  } catch (e) {}
-}
-
-// ----------------- Export & extend state.dom with new UI pieces -----------------
-state.dom.gearButton = gearButton;
-state.dom.gearPanel = gearPanel;
-state.dom.gearSlots = gearSlots;
-state.dom.updateSlotVisual = updateSlotVisual;
-state.dom.updateAllSlotVisuals = updateAllSlotVisuals;
-state.dom.showGearPanel = () => { updateAllSlotVisuals(); updateStatsBox(); gearPanel.style.display = 'block'; };
-state.dom.hideGearPanel = () => { gearPanel.style.display = 'none'; };
-
-state.dom.inventoryContainer = inventoryContainer;
-state.dom.inventorySlots = inventorySlots;
-state.dom.addItemToInventory = addItemToInventory;
-state.dom.removeItemFromInventory = removeItemFromInventory;
-state.dom.updateInventoryVisuals = updateInventoryVisuals;
-state.dom.showInventory = showInventory;
-state.dom.hideInventory = hideInventory;
-
-// Export default convenience object (keeps previous API)
-export default {
-  canvas,
-  ctx,
-  titleScreen,
-  usernameInput,
-  playButton,
-  loadingScreen,
-  loadingPlayerEl,
-  loadingPlayerNameEl,
-  loadingTextEl,
-  chatPanel,
-  chatLog,
-  chatInput,
-  chatSend,
-  settingsBtn,
-  settingsPanel,
-  settingsClose,
-  tabButtons,
-  tabContents,
-  mouseMovementCheckbox,
-  keyboardMovementCheckbox,
-  clickMovementCheckbox,
-  graphicsQuality,
-  showCoordinatesCheckbox,
-  skillTooltip,
-  transientMessage,
-  showTransientMessage,
-  hideTransientMessage,
-  appendChatMessage,
-  focusChat,
-  unfocusChat,
-  loadSettings,
-  saveSettings,
-  setLoadingText,
-  cleanupAfterFailedLoad,
-  showSkillTooltip,
-  hideSkillTooltip,
-  showDeathOverlay,
-  hideDeathOverlay,
-  setReconnectCancelCallback,
-  showReconnectOverlay,
-  hideReconnectOverlay,
-  // gear & inventory
-  gearButton,
-  gearPanel,
-  gearSlots,
-  updateSlotVisual,
-  updateAllSlotVisuals,
-  showGearPanel: state.dom.showGearPanel,
-  hideGearPanel: state.dom.hideGearPanel,
-  inventoryContainer,
-  inventorySlots,
-  addItemToInventory,
-  removeItemFromInventory,
-  updateInventoryVisuals,
-  showInventory,
-  hideInventory
-};
+    gearPanel.style

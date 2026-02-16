@@ -3,10 +3,10 @@
 import { state } from './state.js';
 import { roundRectScreen, pseudo, clientPointInsideWall, clampToMap } from './utils.js';
 import dom from './dom.js';
-import { getHotbarSlotUnderPointer } from './input.js'; // use the single implementation exported by input.js
+import { getHotbarSlotUnderPointer } from './input.js';
 import { preloadTextures, getTexturePattern } from './textures.js';
-import { getSkillIcon } from './icons.js'; // <-- imported so we can draw real icons when loaded
-import { drawMob, preloadMobSprites } from './mob_render.js'; // <-- sprite-based mob renderer
+import { getSkillIcon } from './icons.js';
+import { drawMob, preloadMobSprites } from './mob_render.js';
 
 // --- Canvas setup (DPR aware) ---
 export function resizeCanvas() {
@@ -20,9 +20,7 @@ export function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// Preload wall textures (non-blocking). Place the chosen albedo file at:
-//   assets/textures/walls/Rocks011_1k-PNG_Color.png
-// If you prefer to use Rocks011.png, adjust the src below to that filename.
+// Preload wall textures (non-blocking)
 (function preloadWallTextures() {
   try {
     preloadTextures([
@@ -31,23 +29,21 @@ resizeCanvas();
   } catch (e) {}
 })();
 
-// Preload mob sprites (non-blocking). Expect files at assets/mobs/{goblin,wolf,golem}.webp
+// Preload mob sprites (non-blocking)
 try {
   preloadMobSprites([
     { type: 'goblin', src: 'assets/mobs/goblin.png' },
     { type: 'wolf',   src: 'assets/mobs/wolf.png' },
     { type: 'golem',  src: 'assets/mobs/golem.png' }
   ]).catch(() => {});
-} catch (e) { /* ignore */ }
+} catch (e) {}
 
-// --- Jagged wall params (tweak these to change the 'jaggedness') ---
-const JAG_SEGMENT_LENGTH = 20; // pixels per segment along each wall edge
-const JAG_DISPLACEMENT = 10;   // max perpendicular offset in pixels
+// --- Jagged wall params ---
+const JAG_SEGMENT_LENGTH = 20;
+const JAG_DISPLACEMENT = 10;
 
-// Cache for jagged walls (rebuild only when walls change)
 let jaggedWallCache = [];
 
-// Helper that rebuilds jaggedWallCache from state.map.walls
 function rebuildJaggedWallCache() {
   jaggedWallCache = [];
   try {
@@ -70,14 +66,10 @@ function rebuildJaggedWallCache() {
   } catch (e) {
     jaggedWallCache = [];
   } finally {
-    // clear the flag so we don't rebuild until next change
     state.map._jaggedNeedsUpdate = false;
   }
 }
 
-// Helper: build jagged points around an input polygon (array of {x,y})
-// Returns an array of points that follow the polygon edges but with
-// pseudo-noise offsets perpendicular to each edge to create jagged edges.
 function buildJaggedPoints(polyPoints, segmentLength = JAG_SEGMENT_LENGTH, jagMag = JAG_DISPLACEMENT) {
   if (!Array.isArray(polyPoints) || polyPoints.length < 2) return polyPoints || [];
   const out = [];
@@ -87,27 +79,21 @@ function buildJaggedPoints(polyPoints, segmentLength = JAG_SEGMENT_LENGTH, jagMa
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const segLen = Math.hypot(dx, dy) || 1;
-    const nx = -dy / segLen; // outward normal direction candidate (perp)
+    const nx = -dy / segLen;
     const ny = dx / segLen;
     const steps = Math.max(1, Math.ceil(segLen / segmentLength));
     for (let s = 0; s <= steps; s++) {
       const t = s / steps;
       const px = a.x + dx * t;
       const py = a.y + dy * t;
-      // Use pseudo noise to get a stable offset value based on world coords
-      // Scale inputs so the noise is smoothly varying
       const noise = pseudo(px * 0.08, py * 0.08);
-      // noise runs [0,1) -> shift to [-0.5,0.5], apply jagMag
       const offset = (noise - 0.5) * 2 * jagMag;
-      // Alternate sign a bit to avoid uniform bias by sampling a second noise
       const alt = pseudo(px * 0.07 + 37.13, py * 0.11 + 91.7) - 0.5;
       const finalOffset = offset * (0.8 + 0.4 * alt);
       const jx = px + nx * finalOffset;
       const jy = py + ny * finalOffset;
-      // For start / end points of polygon edges we avoid duplicating vertices:
       if (i === 0 && s === 0) out.push({ x: jx, y: jy });
       else if (s === 0) {
-        // ensure continuity by not duplicating the previous point (skip)
         out.push({ x: jx, y: jy });
       } else {
         out.push({ x: jx, y: jy });
@@ -117,7 +103,6 @@ function buildJaggedPoints(polyPoints, segmentLength = JAG_SEGMENT_LENGTH, jagMa
   return out;
 }
 
-// A safe draw helper that draws a polygon from points array and fills it
 function fillPolygonWithTextureOrColor(points, textureName, fallbackColor) {
   if (!points || points.length < 3) return;
   const ctx = dom.ctx;
@@ -125,7 +110,6 @@ function fillPolygonWithTextureOrColor(points, textureName, fallbackColor) {
   ctx.moveTo(points[0].x, points[0].y);
   for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
   ctx.closePath();
-  // texture pattern (if loaded)
   const pat = getTexturePattern(textureName, ctx);
   if (pat) ctx.fillStyle = pat;
   else ctx.fillStyle = fallbackColor || '#6b4f3b';
@@ -133,7 +117,7 @@ function fillPolygonWithTextureOrColor(points, textureName, fallbackColor) {
   ctx.stroke();
 }
 
-// --- helper: currentClientSpeed (from main.js) ---
+// --- Helper: currentClientSpeed ---
 export function currentClientSpeed() {
   let mult = 1;
   const now = Date.now();
@@ -142,10 +126,9 @@ export function currentClientSpeed() {
   return state.player.baseSpeed * mult;
 }
 
-// --- Drawing helpers: HP/XP placement & Hotbar with icons ---
+// --- Drawing helpers ---
 function drawXpBarAt(x, y, barW, barH) {
   const padding = 3;
-  // Use server-provided nextLevelXp if available; fallback to old formula
   const nextNeeded = Math.max(50, (typeof state.player.nextLevelXp === 'number' ? state.player.nextLevelXp : (state.player.level * 100)));
   const pct = nextNeeded > 0 ? Math.min(1, (state.player.xp || 0) / nextNeeded) : 0;
   dom.ctx.save();
@@ -184,7 +167,6 @@ function drawHpBarAt(x, y, barW, barH) {
 }
 
 function drawActiveEffectsAt(startX, startY, barH) {
-  // Draw local buffs (state.player.localBuffs) as icons with timer to the right of HP bar
   const now = Date.now();
   const effects = (state.player.localBuffs || []).filter(b => b.until > now);
   if (!effects.length) return;
@@ -196,21 +178,100 @@ function drawActiveEffectsAt(startX, startY, barH) {
     const e = effects[i];
     const ix = startX;
     const iy = startY + i * (iconW + gap);
-    // background circle
     dom.ctx.globalAlpha = 0.95;
     dom.ctx.fillStyle = e.type === 'speed' ? 'rgba(255,220,120,0.95)' : e.type === 'damage' ? 'rgba(255,150,120,0.95)' : e.type === 'stuck' ? 'rgba(220,120,120,0.95)' : 'rgba(200,200,200,0.95)';
     roundRectScreen(dom.ctx, ix, iy, iconW, iconW, 6, true, false);
-    // icon glyph
     dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'middle';
     dom.ctx.fillStyle = '#111';
     const glyph = e.type === 'speed' ? '⚡' : e.type === 'damage' ? '🔥' : e.type === 'stuck' ? '❌' : '●';
     dom.ctx.fillText(glyph, ix + iconW / 2, iy + iconW / 2 + 1);
-    // timer overlay
     const remaining = Math.max(0, Math.round((e.until - now) / 1000));
     dom.ctx.fillStyle = 'rgba(255,255,255,0.9)';
     dom.ctx.font = '11px system-ui, Arial';
     dom.ctx.fillText(`${remaining}s`, ix + iconW / 2, iy + iconW - 8);
   }
+  dom.ctx.restore();
+}
+
+// --- FFA Leaderboard display (top-left, under settings button) ---
+function drawLeaderboard(vw, vh) {
+  if (state.gameState !== 'in_game' || !state.matchLeaderboard || state.matchLeaderboard.length === 0) return;
+  
+  dom.ctx.save();
+  const padding = 12;
+  const startX = padding + 50; // Under settings button (44px) + gap
+  const startY = padding;
+  const itemHeight = 28;
+  const maxWidth = 200;
+  
+  // Draw leaderboard entries (top 10)
+  let yOffset = startY;
+  for (let i = 0; i < Math.min(10, state.matchLeaderboard.length); i++) {
+    const entry = state.matchLeaderboard[i];
+    const isPlayer = String(entry.playerId) === String(state.player.id);
+    
+    // Background
+    dom.ctx.globalAlpha = isPlayer ? 0.95 : 0.75;
+    dom.ctx.fillStyle = isPlayer ? 'rgba(30,144,255,0.3)' : 'rgba(0,0,0,0.3)';
+    roundRectScreen(dom.ctx, startX, yOffset, maxWidth, itemHeight, 4, true, false);
+    
+    // Text
+    dom.ctx.globalAlpha = 1.0;
+    dom.ctx.fillStyle = isPlayer ? '#1e90ff' : '#fff';
+    dom.ctx.font = isPlayer ? 'bold 12px system-ui, Arial' : '12px system-ui, Arial';
+    dom.ctx.textAlign = 'left';
+    dom.ctx.textBaseline = 'middle';
+    
+    const rankStr = `${i + 1}.`;
+    const nameStr = entry.playerName.length > 12 ? entry.playerName.substring(0, 10) + '..' : entry.playerName;
+    const killsStr = `${entry.kills}`;
+    
+    dom.ctx.fillText(rankStr, startX + 6, yOffset + itemHeight / 2);
+    dom.ctx.fillText(nameStr, startX + 28, yOffset + itemHeight / 2);
+    dom.ctx.textAlign = 'right';
+    dom.ctx.fillText(killsStr, startX + maxWidth - 6, yOffset + itemHeight / 2);
+    
+    yOffset += itemHeight + 4;
+  }
+  
+  dom.ctx.restore();
+}
+
+// --- Match timer (top center) ---
+function drawMatchTimer(vw, vh) {
+  if (state.gameState !== 'in_game') return;
+  
+  const now = Date.now();
+  let remaining = state.matchTimeRemainingMs - (now - state.matchStartTime || 0);
+  if (remaining < 0) remaining = 0;
+  
+  const seconds = Math.ceil(remaining / 1000);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+  
+  dom.ctx.save();
+  dom.ctx.globalAlpha = 0.95;
+  dom.ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  dom.ctx.font = 'bold 18px system-ui, Arial';
+  dom.ctx.textAlign = 'center';
+  dom.ctx.textBaseline = 'top';
+  
+  const centerX = vw / 2;
+  const topY = 12;
+  
+  // Measure text width for background
+  const metrics = dom.ctx.measureText(timeStr);
+  const textW = metrics.width;
+  const textH = 24;
+  const boxW = textW + 12;
+  const boxH = textH + 6;
+  
+  roundRectScreen(dom.ctx, centerX - boxW / 2, topY, boxW, boxH, 6, true, false);
+  
+  dom.ctx.fillStyle = '#fff';
+  dom.ctx.fillText(timeStr, centerX, topY + 3);
+  
   dom.ctx.restore();
 }
 
@@ -230,7 +291,6 @@ function drawHotbar(vw, vh) {
     dom.ctx.fillStyle = 'rgba(40,40,42,0.95)';
     roundRectScreen(dom.ctx, sx, sy, slotSize, slotSize, 8, true, false);
 
-    // highlight hovered slot
     const hovered = getHotbarSlotUnderPointer(state.pointer.x, state.pointer.y, vw, vh);
     if (hovered === i) {
       dom.ctx.lineWidth = 3;
@@ -238,13 +298,11 @@ function drawHotbar(vw, vh) {
       roundRectScreen(dom.ctx, sx, sy, slotSize, slotSize, 8, false, true);
     }
 
-    // draw icon background using skill color and icon glyph or image
     const meta = (state.SKILL_META[state.player.class] && state.SKILL_META[state.player.class][i]) || null;
     if (meta) {
       dom.ctx.fillStyle = meta.color || 'rgba(255,255,255,0.06)';
       roundRectScreen(dom.ctx, sx + 8, sy + 8, slotSize - 16, slotSize - 16, 6, true, false);
 
-      // Try to draw image icon if available
       let drawn = false;
       try {
         const img = (typeof getSkillIcon === 'function') ? getSkillIcon(state.player.class, meta.type) : null;
@@ -286,7 +344,6 @@ function drawHotbar(vw, vh) {
   dom.ctx.restore();
 }
 
-// --- Drawing & interpolation (including mobs & projectiles) ---
 function drawWorld(vw, vh, dt) {
   dom.ctx.save();
   dom.ctx.fillStyle = '#8b5a2b';
@@ -298,7 +355,6 @@ function drawWorld(vw, vh, dt) {
 
   dom.ctx.save();
 
-  // Rebuild jagged wall cache only when needed
   if (state.map._jaggedNeedsUpdate || !jaggedWallCache || !jaggedWallCache.length) {
     rebuildJaggedWallCache();
   }
@@ -331,7 +387,6 @@ function drawWorld(vw, vh, dt) {
     dom.ctx.strokeStyle = '#2a6b2a';
     dom.ctx.strokeRect(x, y, size, size);
 
-    // draw walls (use cached jagged polygons)
     dom.ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     dom.ctx.lineWidth = 2;
     for (const w of (jaggedWallCache || [])) {
@@ -368,7 +423,6 @@ function drawWorld(vw, vh, dt) {
       }
       if (!allowed) continue;
       let insideWall = false;
-      // Use clientPointInsideWall for both rects and polygons
       if (clientPointInsideWall(wx, wy)) insideWall = true;
       if (insideWall) continue;
       const p = pseudo(wx, wy);
@@ -411,7 +465,6 @@ function drawWorld(vw, vh, dt) {
       dom.ctx.fillStyle = '#fff';
       dom.ctx.fillText(rp.name, rp.displayX, rp.displayY - rp.radius - 12);
     }
-    // show stun marker if present
     if (rp.stunnedUntil && rp.stunnedUntil > Date.now()) {
       dom.ctx.font = '14px system-ui, Arial'; dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'bottom'; dom.ctx.fillStyle = 'rgba(255,255,255,0.9)';
       dom.ctx.fillText('❌', rp.displayX, rp.displayY - rp.radius - 6);
@@ -419,14 +472,13 @@ function drawWorld(vw, vh, dt) {
   }
   dom.ctx.restore();
 
-  // draw projectiles (interpolated)
+  // draw projectiles
   dom.ctx.save();
   for (const pr of state.remoteProjectiles.values()) {
     const interpFactor = 1 - Math.exp(-state.REMOTE_INTERP_SPEED * dt);
     pr.displayX += (pr.targetX - pr.displayX) * interpFactor;
     pr.displayY += (pr.targetY - pr.displayY) * interpFactor;
     dom.ctx.beginPath();
-    // color based on type
     let col = '#ff9f4d';
     if (pr.type === 'arrow') col = '#ffd54a';
     else if (pr.type === 'fireball') col = '#ff6b6b';
@@ -437,7 +489,6 @@ function drawWorld(vw, vh, dt) {
     dom.ctx.globalAlpha = pr.alpha != null ? pr.alpha : 1.0;
     dom.ctx.arc(pr.displayX, pr.displayY, Math.max(3, pr.radius || 6), 0, Math.PI * 2);
     dom.ctx.fill();
-    // slight trail
     dom.ctx.globalAlpha = 0.5 * (pr.alpha != null ? pr.alpha : 1.0);
     dom.ctx.beginPath();
     dom.ctx.arc(pr.displayX - (pr.vx||0)*0.02, pr.displayY - (pr.vy||0)*0.02, Math.max(2, (pr.radius||6)*0.8), 0, Math.PI*2);
@@ -446,27 +497,22 @@ function drawWorld(vw, vh, dt) {
   }
   dom.ctx.restore();
 
-  // draw mobs (interpolated + spawn/fade + hp bar) using sprite-based drawMob
+  // draw mobs
   dom.ctx.save();
   for (const rm of state.remoteMobs.values()) {
-    // interpolate
     const interpFactor = 1 - Math.exp(-state.REMOTE_INTERP_SPEED * dt);
     rm.displayX += (rm.targetX - rm.displayX) * interpFactor;
     rm.displayY += (rm.targetY - rm.displayY) * interpFactor;
-    // alpha spawn/fade
     if (!rm.dead) {
-      rm.alpha = Math.min(1, (rm.alpha || 0) + dt * 4.0); // fast fade-in
+      rm.alpha = Math.min(1, (rm.alpha || 0) + dt * 4.0);
     } else {
-      rm.alpha = Math.max(0, (rm.alpha || 1) - dt * 2.5); // fade out when dead/removed
+      rm.alpha = Math.max(0, (rm.alpha || 1) - dt * 2.5);
     }
-    // if fully faded out and dead, remove from map
     if (rm.dead && rm.alpha <= 0.001) { state.remoteMobs.delete(rm.id); continue; }
 
-    // Draw procedural sprite (handles silhouette & simple stun glyph)
     try {
       drawMob(dom.ctx, rm);
     } catch (e) {
-      // fallback to circle if drawMob fails
       dom.ctx.globalAlpha = rm.alpha != null ? rm.alpha : 1.0;
       dom.ctx.beginPath();
       dom.ctx.arc(rm.displayX, rm.displayY, rm.radius, 0, Math.PI * 2);
@@ -480,7 +526,7 @@ function drawWorld(vw, vh, dt) {
   }
   dom.ctx.restore();
 
-  // draw any remoteEffects that are world-space (aoe, xp, heal, melee, damage)
+  // draw remoteEffects
   const now = Date.now();
   for (let i = state.remoteEffects.length - 1; i >= 0; i--) {
     const ef = state.remoteEffects[i];
@@ -510,14 +556,12 @@ function drawWorld(vw, vh, dt) {
       dom.ctx.fillStyle = ef.color || 'rgba(120,255,140,0.95)';
       dom.ctx.fillText(ef.text || '+HP', ef.x || 0, syh);
     } else if (ef.type === 'damage') {
-      // red damage numbers float up and fade
       const syd = (ef.y || 0) - t * 28;
       dom.ctx.globalAlpha = 1 - Math.pow(t, 0.9);
       dom.ctx.font = 'bold 16px system-ui, Arial';
       dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'middle';
       dom.ctx.fillStyle = ef.color || 'rgba(255,80,80,0.95)';
       dom.ctx.fillText(ef.text || '0', ef.x || 0, syd);
-      // slight outline
       dom.ctx.lineWidth = 2;
       dom.ctx.strokeStyle = 'rgba(0,0,0,0.45)';
       dom.ctx.strokeText(ef.text || '0', ef.x || 0, syd);
@@ -529,7 +573,6 @@ function drawWorld(vw, vh, dt) {
       dom.ctx.arc(ef.x || 0, ef.y || 0, r, 0, Math.PI * 2);
       dom.ctx.fill();
     } else {
-      // generic fallback: small dot
       dom.ctx.globalAlpha = 1 - t;
       dom.ctx.fillStyle = ef.color || 'rgba(255,255,255,0.9)';
       dom.ctx.beginPath();
@@ -590,7 +633,6 @@ function drawPlayerScreen(screenX, screenY, angle) {
     dom.ctx.fillText(state.player.name + (state.player.level ? ` (Lv ${state.player.level})` : ''), screenX, screenY - state.player.radius - 12);
   }
 
-  // draw local buff glow
   const now = Date.now();
   state.player.localBuffs = state.player.localBuffs.filter(b => b.until > now);
   if (state.player.localBuffs.length) {
@@ -606,7 +648,6 @@ function drawPlayerScreen(screenX, screenY, angle) {
     dom.ctx.restore();
   }
 
-  // Stunned indicator on player
   if (state.player.stunnedUntil && state.player.stunnedUntil > Date.now()) {
     dom.ctx.font = '16px system-ui, Arial';
     dom.ctx.fillStyle = 'rgba(255,255,255,0.95)';
@@ -634,17 +675,14 @@ function drawMinimap() {
   const cx = x + size / 2;
   const cy = y + size / 2;
 
-  // Determine world width (diameter) used for minimap scaling
   const worldDiameter = state.map.size || (state.map.radius * 2);
   const scale = size / worldDiameter;
 
-  // Draw grid overlay for coordinate system (20 squares across diameter)
   const SQUARES = 20;
-  const halfSquares = SQUARES / 2; // 10
-  const squareWorld = worldDiameter / SQUARES; // world units per square
-  const squarePx = squareWorld * scale; // pixels per square on minimap
+  const halfSquares = SQUARES / 2;
+  const squareWorld = worldDiameter / SQUARES;
+  const squarePx = squareWorld * scale;
 
-  // Background for map area
   if (state.map.type === 'circle') {
     dom.ctx.beginPath();
     dom.ctx.arc(cx, cy, (state.map.radius * scale), 0, Math.PI * 2);
@@ -666,14 +704,10 @@ function drawMinimap() {
     dom.ctx.strokeRect(cx - ms/2, cy - ms/2, ms, ms);
   }
 
-  // Grid lines
   dom.ctx.save();
   dom.ctx.lineWidth = 1;
   for (let i = -halfSquares; i <= halfSquares; i++) {
     const px = cx + i * squarePx;
-    // vertical line: only draw within minimap square bounds
-    dom.ctx.beginPath();
-    // Axis line (x=0) thicker
     if (i === 0) {
       dom.ctx.strokeStyle = 'rgba(255,255,255,0.9)';
       dom.ctx.lineWidth = 1.8;
@@ -681,11 +715,11 @@ function drawMinimap() {
       dom.ctx.strokeStyle = 'rgba(255,255,255,0.12)';
       dom.ctx.lineWidth = 1;
     }
+    dom.ctx.beginPath();
     dom.ctx.moveTo(px, cy - size/2);
     dom.ctx.lineTo(px, cy + size/2);
     dom.ctx.stroke();
 
-    // X labels every 2 squares to reduce clutter
     if (i % 2 === 0) {
       dom.ctx.font = '10px system-ui, Arial';
       dom.ctx.textAlign = 'center';
@@ -695,8 +729,7 @@ function drawMinimap() {
     }
   }
   for (let j = -halfSquares; j <= halfSquares; j++) {
-    const py = cy - j * squarePx; // note: j positive is up -> subtract in pixel space
-    dom.ctx.beginPath();
+    const py = cy - j * squarePx;
     if (j === 0) {
       dom.ctx.strokeStyle = 'rgba(255,255,255,0.9)';
       dom.ctx.lineWidth = 1.8;
@@ -704,11 +737,11 @@ function drawMinimap() {
       dom.ctx.strokeStyle = 'rgba(255,255,255,0.12)';
       dom.ctx.lineWidth = 1;
     }
+    dom.ctx.beginPath();
     dom.ctx.moveTo(cx - size/2, py);
     dom.ctx.lineTo(cx + size/2, py);
     dom.ctx.stroke();
 
-    // Y labels every 2 squares (label to left)
     if (j % 2 === 0) {
       dom.ctx.font = '10px system-ui, Arial';
       dom.ctx.textAlign = 'right';
@@ -719,7 +752,6 @@ function drawMinimap() {
   }
   dom.ctx.restore();
 
-  // draw walls in minimap (rects or polygons) - keep existing behavior
   dom.ctx.fillStyle = '#6b4f3b';
   dom.ctx.strokeStyle = 'rgba(0,0,0,0.6)';
   for (const w of (state.map.walls || [])) {
@@ -745,7 +777,6 @@ function drawMinimap() {
     }
   }
 
-  // player dot
   const px = cx + (state.player.x - state.map.center.x) * scale;
   const py = cy + (state.player.y - state.map.center.y) * scale;
   dom.ctx.beginPath();
@@ -753,13 +784,11 @@ function drawMinimap() {
   dom.ctx.arc(px, py, Math.max(3, Math.min(8, state.player.radius * 0.18)), 0, Math.PI * 2);
   dom.ctx.fill();
 
-  // mobs on minimap (small red dots)
   for (const rm of state.remoteMobs.values()) {
     if (typeof rm.targetX !== 'number' || typeof rm.targetY !== 'number') continue;
     const mx = cx + (rm.targetX - state.map.center.x) * scale;
     const my = cy + (rm.targetY - state.map.center.y) * scale;
     dom.ctx.beginPath();
-    // changed from grey to red for better visibility / threat indication
     dom.ctx.fillStyle = 'rgba(220,80,80,0.95)';
     dom.ctx.arc(mx, my, Math.max(1.5, Math.min(4, (rm.radius || 12) * 0.08)), 0, Math.PI * 2);
     dom.ctx.fill();
@@ -772,41 +801,35 @@ function drawMinimap() {
 
   dom.ctx.restore();
 
-  // Position the DOM gear button to the left of the minimap
- try {
-  if (dom.gearButton) {
-    const dpr = window.devicePixelRatio || 1;
-    // convert minimap x,y in CSS pixels
-    const cssX = x; const cssY = y;
-    const btnSize = 44; // match settings button & dom.js size
-    // position left of minimap with a small gap
-    dom.gearButton.style.left = `${Math.max(8, cssX - btnSize - 12)}px`;
-    dom.gearButton.style.top = `${cssY + 6}px`;
-  }
-  // Also keep gear panel stats updated if it's visible
-  if (dom.gearPanel && dom.gearPanel.style.display && dom.gearPanel.style.display !== 'none') {
-    if (typeof dom.updateAllSlotVisuals === 'function') dom.updateAllSlotVisuals();
-  }
-} catch (e) {}
+  try {
+    if (dom.gearButton) {
+      const dpr = window.devicePixelRatio || 1;
+      const cssX = x;
+      const cssY = y;
+      const btnSize = 44;
+      dom.gearButton.style.left = `${Math.max(8, cssX - btnSize - 12)}px`;
+      dom.gearButton.style.top = `${cssY + 6}px`;
+    }
+    if (dom.gearPanel && dom.gearPanel.style.display && dom.gearPanel.style.display !== 'none') {
+      if (typeof dom.updateAllSlotVisuals === 'function') dom.updateAllSlotVisuals();
+    }
+  } catch (e) {}
 }
 
-// The rest of file unchanged (draw player, hotbar and main loop)
 function drawCoordinatesBottomRight() {
   if (!state.settings.showCoordinates) return;
   const vw = dom.canvas.width / (window.devicePixelRatio || 1);
   const vh = dom.canvas.height / (window.devicePixelRatio || 1);
   const padding = 12;
 
-  // Map to integer grid where center is (0,0) and diameter == 20 squares
   const worldDiameter = state.map.size || (state.map.radius * 2);
   const SQUARES = 20;
   const squareWorld = worldDiameter / SQUARES;
 
-  // Compute grid coordinates. We want +X to the right, +Y upward.
   const dx = state.player.x - state.map.center.x;
   const dy = state.player.y - state.map.center.y;
   const gridX = Math.round(dx / squareWorld);
-  const gridY = Math.round(-dy / squareWorld); // invert so up = positive
+  const gridY = Math.round(-dy / squareWorld);
 
   const text = `x: ${gridX}, y: ${gridY}`;
   dom.ctx.save();
@@ -833,7 +856,6 @@ export function startLoop() {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
 
-    // update cooldown timers
     for (let i = 0; i < state.HOTBAR_SLOTS; i++) {
       if (state.cooldowns[i] > 0) {
         state.cooldowns[i] = Math.max(0, state.cooldowns[i] - dt);
@@ -843,9 +865,8 @@ export function startLoop() {
     if (state.isLoading) { requestAnimationFrame(loop); return; }
     const titleVisible = state.dom.titleScreen && state.dom.titleScreen.style.display !== 'none';
     const settingsOpen = state.dom.settingsPanel && state.dom.settingsPanel.getAttribute('aria-hidden') === 'false';
-    const inputVec = (!titleVisible && !settingsOpen) ? state.computeInputVector() : { x: 0, y: 0 };
+    const inputVec = (!titleVisible && !settingsOpen && state.gameState === 'in_game') ? state.computeInputVector() : { x: 0, y: 0 };
 
-    // compute client-side speed (considers local buffs)
     const clientSpeed = currentClientSpeed();
 
     const targetVx = inputVec.x * clientSpeed;
@@ -878,17 +899,15 @@ export function startLoop() {
     dom.ctx.clearRect(0, 0, vw, vh);
     dom.ctx.save();
     dom.ctx.translate(vw / 2 - state.player.x, vh / 2 - state.player.y);
-    if (!titleVisible) drawWorld(vw, vh, dt);
+    if (!titleVisible && state.gameState === 'in_game') drawWorld(vw, vh, dt);
     dom.ctx.restore();
     const playerScreenX = vw / 2;
     const playerScreenY = vh / 2;
     const angle = state.player.facing;
-    if (!titleVisible) drawPlayerScreen(playerScreenX, playerScreenY, angle);
+    if (!titleVisible && state.gameState === 'in_game') drawPlayerScreen(playerScreenX, playerScreenY, angle);
 
-    // Draw HUD: hotbar centered bottom; HP above hotbar; effects to right of HP; XP under hotbar
-    if (!titleVisible) {
+    if (!titleVisible && state.gameState === 'in_game') {
       drawHotbar(vw, vh);
-      // compute positions for HP/XP aligned with hotbar (same logic used in drawHotbar)
       const slotSize = 64;
       const gap = 10;
       const totalW = state.HOTBAR_SLOTS * slotSize + (state.HOTBAR_SLOTS - 1) * gap;
@@ -902,7 +921,6 @@ export function startLoop() {
       const xpY = hotbarY + slotSize + 8;
       drawXpBarAt(barX, xpY, barW, barH);
 
-      // Additional numeric HP / XP display under the hotbar (centered)
       dom.ctx.save();
       dom.ctx.font = '13px system-ui, Arial';
       dom.ctx.textAlign = 'center';
@@ -915,11 +933,12 @@ export function startLoop() {
       dom.ctx.restore();
     }
 
-    if (!titleVisible) {
+    if (!titleVisible && state.gameState === 'in_game') {
       if (state.settings.showCoordinates) drawCoordinatesBottomRight();
       drawMinimap();
+      drawLeaderboard(vw, vh);
+      drawMatchTimer(vw, vh);
 
-      // draw target ring if selectedTarget exists
       if (state.selectedTarget && (state.remoteMobs.has(state.selectedTarget.id) || state.remotePlayers.has(state.selectedTarget.id))) {
         let ent = null;
         if (state.remoteMobs.has(state.selectedTarget.id)) ent = state.remoteMobs.get(state.selectedTarget.id);

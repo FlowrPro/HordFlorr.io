@@ -463,22 +463,6 @@ export function handleServerMessage(msg) {
       if (state.dom.chatInput) state.dom.chatInput.disabled = false;
       try { state.dom.canvas.focus(); } catch (e) {}
 
-      // Give starter gear to the player once (client-side starter items)
-      try {
-        if (!state._startersGiven) {
-          const starters = [
-            { id: 'starter_helmet', name: 'Basic Helmet', img: 'assets/items/starterhelmet.png', icon: '🪖', stats: { maxHp: 20 } },
-            { id: 'starter_shirt',  name: 'Basic shirt',  img: 'assets/items/startershirt.png',  icon: '👕', stats: { maxHp: 30 } },
-            { id: 'starter_leggings',name: 'Basic pants',  img: 'assets/items/starterlegging.png', icon: '👖', stats: { baseSpeed: 6 } },
-            { id: 'starter_boots',  name: 'Basic Boots',  img: 'assets/items/starterboot.png',   icon: '🥿', stats: { baseSpeed: 8 } }
-          ];
-          for (const it of starters) {
-            try { dom.addItemToInventory(it); } catch (e) {}
-          }
-          state._startersGiven = true;
-        }
-      } catch (e) {}
-
       // Show inventory now that the world is ready (inventory was hidden until first snapshot)
       try {
         if (state.dom && typeof state.dom.showInventory === 'function') state.dom.showInventory();

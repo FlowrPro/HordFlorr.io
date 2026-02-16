@@ -74,7 +74,7 @@ itemTooltip.style.padding = '12px';
 itemTooltip.style.borderRadius = '10px';
 itemTooltip.style.fontSize = '13px';
 itemTooltip.style.boxShadow = '0 10px 30px rgba(0,0,0,0.6)';
-itemTooltip.style.width = '320px'; // wider than skill tooltip
+itemTooltip.style.width = '320px';
 itemTooltip.style.maxWidth = 'min(92vw, 360px)';
 document.body.appendChild(itemTooltip);
 
@@ -88,7 +88,6 @@ export function showItemTooltip(it, x, y) {
       lines.push('<div style="font-size:13px;color:#fff">');
       for (const k of Object.keys(it.stats)) {
         const v = it.stats[k];
-        // pretty key: convert camelCase -> words
         const pretty = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
         lines.push(`<div style="margin:2px 0;"><strong>${escapeHtml(pretty)}:</strong> ${escapeHtml(String(v))}</div>`);
       }
@@ -97,7 +96,6 @@ export function showItemTooltip(it, x, y) {
       lines.push('<div style="font-size:13px;color:#ddd">No stats</div>');
     }
     itemTooltip.innerHTML = lines.join('');
-    // position (clamp to viewport)
     const w = Math.min(window.innerWidth - 12, 360);
     let left = x + 12;
     let top = y + 12;
@@ -109,7 +107,7 @@ export function showItemTooltip(it, x, y) {
 }
 export function hideItemTooltip() { try { itemTooltip.style.display = 'none'; } catch (e) {} }
 
-// Transient top-center message (for non-chat notifications)
+// Transient top-center message
 const transientMessage = document.createElement('div');
 transientMessage.id = 'transientMessage';
 transientMessage.style.position = 'fixed';
@@ -147,7 +145,7 @@ export function hideTransientMessage() {
   if (transientTimeout) { clearTimeout(transientTimeout); transientTimeout = null; }
 }
 
-// --- Death overlay (same as before) ---
+// --- Death overlay ---
 const deathOverlay = document.createElement('div');
 deathOverlay.id = 'deathOverlay';
 deathOverlay.style.position = 'fixed';
@@ -330,112 +328,182 @@ export function hideReconnectOverlay() {
   } catch (e) {}
 }
 
-// --- Mode Selection Screen Helpers ---
+// --- MODE SELECTION SCREEN ---
+const modeSelectScreen = document.createElement('div');
+modeSelectScreen.id = 'modeSelectScreen';
+modeSelectScreen.style.position = 'fixed';
+modeSelectScreen.style.inset = '0';
+modeSelectScreen.style.display = 'none';
+modeSelectScreen.style.zIndex = '100';
+modeSelectScreen.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+modeSelectScreen.style.alignItems = 'center';
+modeSelectScreen.style.justifyContent = 'center';
+modeSelectScreen.style.flexDirection = 'column';
+modeSelectScreen.style.gap = '24px';
+modeSelectScreen.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+
+const modeTitle = document.createElement('h1');
+modeTitle.textContent = 'Select Game Mode';
+modeTitle.style.fontSize = '48px';
+modeTitle.style.fontWeight = '800';
+modeTitle.style.color = '#fff';
+modeTitle.style.margin = '0';
+modeTitle.style.textShadow = '0 4px 12px rgba(0,0,0,0.3)';
+
+const modeButtonsContainer = document.createElement('div');
+modeButtonsContainer.style.display = 'flex';
+modeButtonsContainer.style.gap = '20px';
+modeButtonsContainer.style.flexWrap = 'wrap';
+modeButtonsContainer.style.justifyContent = 'center';
+
+const ffaButton = document.createElement('button');
+ffaButton.id = 'ffaButton';
+ffaButton.type = 'button';
+ffaButton.textContent = 'Free For All';
+ffaButton.style.padding = '16px 32px';
+ffaButton.style.fontSize = '18px';
+ffaButton.style.fontWeight = '700';
+ffaButton.style.borderRadius = '10px';
+ffaButton.style.border = 'none';
+ffaButton.style.background = '#ff6b6b';
+ffaButton.style.color = '#fff';
+ffaButton.style.cursor = 'pointer';
+ffaButton.style.boxShadow = '0 8px 24px rgba(255,107,107,0.3)';
+ffaButton.style.transition = 'transform 0.2s, box-shadow 0.2s';
+ffaButton.addEventListener('mouseenter', () => {
+  ffaButton.style.transform = 'translateY(-4px)';
+  ffaButton.style.boxShadow = '0 12px 32px rgba(255,107,107,0.4)';
+});
+ffaButton.addEventListener('mouseleave', () => {
+  ffaButton.style.transform = 'translateY(0)';
+  ffaButton.style.boxShadow = '0 8px 24px rgba(255,107,107,0.3)';
+});
+
+modeButtonsContainer.appendChild(ffaButton);
+modeSelectScreen.appendChild(modeTitle);
+modeSelectScreen.appendChild(modeButtonsContainer);
+document.body.appendChild(modeSelectScreen);
+
 export function showModeSelectScreen() {
-  try {
-    if (state.dom.titleScreen) state.dom.titleScreen.style.display = 'none';
-    if (state.dom.loadingScreen) state.dom.loadingScreen.style.display = 'none';
-    const modeScreen = document.getElementById('modeSelectScreen');
-    if (modeScreen) {
-      modeScreen.style.display = 'flex';
-      modeScreen.setAttribute('aria-hidden', 'false');
-    }
-  } catch (e) {}
+  if (modeSelectScreen) {
+    modeSelectScreen.style.display = 'flex';
+  }
 }
+
 export function hideModeSelectScreen() {
-  try {
-    const modeScreen = document.getElementById('modeSelectScreen');
-    if (modeScreen) {
-      modeScreen.style.display = 'none';
-      modeScreen.setAttribute('aria-hidden', 'true');
-    }
-  } catch (e) {}
+  if (modeSelectScreen) {
+    modeSelectScreen.style.display = 'none';
+  }
 }
 
-// --- Queue Screen Helpers ---
+// --- QUEUE SCREEN ---
+const queueScreen = document.createElement('div');
+queueScreen.id = 'queueScreen';
+queueScreen.style.position = 'fixed';
+queueScreen.style.inset = '0';
+queueScreen.style.display = 'none';
+queueScreen.style.zIndex = '100';
+queueScreen.style.background = '#1a1a2e';
+queueScreen.style.alignItems = 'center';
+queueScreen.style.justifyContent = 'center';
+queueScreen.style.flexDirection = 'column';
+queueScreen.style.gap = '24px';
+queueScreen.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+queueScreen.style.color = '#fff';
+
+const queueTitle = document.createElement('h1');
+queueTitle.textContent = 'Waiting for Match...';
+queueTitle.style.fontSize = '36px';
+queueTitle.style.fontWeight = '800';
+queueTitle.style.margin = '0 0 12px 0';
+
+const queuePlayerCountDiv = document.createElement('div');
+queuePlayerCountDiv.style.fontSize = '24px';
+queuePlayerCountDiv.style.color = '#4fbfef';
+queuePlayerCountDiv.textContent = '0 / 10 players';
+
+const queueCountdownDiv = document.createElement('div');
+queueCountdownDiv.style.fontSize = '18px';
+queueCountdownDiv.style.color = '#aaa';
+queueCountdownDiv.style.minHeight = '24px';
+
+const queuePlayersList = document.createElement('div');
+queuePlayersList.style.display = 'flex';
+queuePlayersList.style.flexDirection = 'column';
+queuePlayersList.style.gap = '8px';
+queuePlayersList.style.maxHeight = '300px';
+queuePlayersList.style.overflowY = 'auto';
+queuePlayersList.style.background = 'rgba(255,255,255,0.05)';
+queuePlayersList.style.padding = '16px';
+queuePlayersList.style.borderRadius = '8px';
+queuePlayersList.style.minWidth = '300px';
+
+const cancelQueueBtn = document.createElement('button');
+cancelQueueBtn.id = 'cancelQueueBtn';
+cancelQueueBtn.type = 'button';
+cancelQueueBtn.textContent = 'Cancel';
+cancelQueueBtn.style.padding = '12px 24px';
+cancelQueueBtn.style.fontSize = '16px';
+cancelQueueBtn.style.fontWeight = '700';
+cancelQueueBtn.style.borderRadius = '8px';
+cancelQueueBtn.style.border = 'none';
+cancelQueueBtn.style.background = '#c04';
+cancelQueueBtn.style.color = '#fff';
+cancelQueueBtn.style.cursor = 'pointer';
+cancelQueueBtn.style.boxShadow = '0 6px 18px rgba(192,4,4,0.3)';
+
+queueScreen.appendChild(queueTitle);
+queueScreen.appendChild(queuePlayerCountDiv);
+queueScreen.appendChild(queueCountdownDiv);
+queueScreen.appendChild(queuePlayersList);
+queueScreen.appendChild(cancelQueueBtn);
+document.body.appendChild(queueScreen);
+
 export function showQueueScreen() {
-  try {
-    hideModeSelectScreen();
-    const queueScreen = document.getElementById('queueScreen');
-    if (queueScreen) {
-      queueScreen.style.display = 'flex';
-      queueScreen.setAttribute('aria-hidden', 'false');
-    }
-  } catch (e) {}
-}
-export function hideQueueScreen() {
-  try {
-    const queueScreen = document.getElementById('queueScreen');
-    if (queueScreen) {
-      queueScreen.style.display = 'none';
-      queueScreen.setAttribute('aria-hidden', 'true');
-    }
-  } catch (e) {}
-}
-export function updateQueueDisplay(playerNames, currentCount, maxCount) {
-  try {
-    const countEl = document.getElementById('queueCount');
-    if (countEl) countEl.textContent = `${currentCount}/${maxCount}`;
-    
-    const listEl = document.getElementById('queuePlayerList');
-    if (listEl) {
-      if (!playerNames || playerNames.length === 0) {
-        listEl.innerHTML = '<div style="color:rgba(255,255,255,0.7); text-align:center;">Waiting for players...</div>';
-      } else {
-        listEl.innerHTML = playerNames.map((name, i) => `
-          <div style="color:#fff; padding:8px; border-bottom:1px solid rgba(255,255,255,0.1);">
-            ${i + 1}. ${escapeHtml(name)}
-          </div>
-        `).join('');
-      }
-    }
-  } catch (e) {}
+  if (queueScreen) {
+    queueScreen.style.display = 'flex';
+  }
 }
 
-// --- Countdown Screen Helpers ---
-export function showCountdownScreen() {
-  try {
-    hideQueueScreen();
-    const countdownScreen = document.getElementById('countdownScreen');
-    if (countdownScreen) {
-      countdownScreen.style.display = 'flex';
-      countdownScreen.setAttribute('aria-hidden', 'false');
-    }
-  } catch (e) {}
+export function hideQueueScreen() {
+  if (queueScreen) {
+    queueScreen.style.display = 'none';
+  }
 }
-export function hideCountdownScreen() {
-  try {
-    const countdownScreen = document.getElementById('countdownScreen');
-    if (countdownScreen) {
-      countdownScreen.style.display = 'none';
-      countdownScreen.setAttribute('aria-hidden', 'true');
-    }
-  } catch (e) {}
+
+export function updateQueueDisplay(players, currentCount, maxCount) {
+  queuePlayerCountDiv.textContent = `${currentCount} / ${maxCount} players`;
+  
+  queuePlayersList.innerHTML = '';
+  for (const playerName of players) {
+    const playerEl = document.createElement('div');
+    playerEl.style.padding = '8px';
+    playerEl.style.background = 'rgba(255,255,255,0.1)';
+    playerEl.style.borderRadius = '4px';
+    playerEl.style.fontSize = '14px';
+    playerEl.textContent = '✓ ' + playerName;
+    queuePlayersList.appendChild(playerEl);
+  }
 }
-export function updateCountdownDisplay(remainingMs, playerNames, currentCount, maxCount) {
-  try {
-    const seconds = Math.ceil(remainingMs / 1000);
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    const countdownEl = document.getElementById('countdownTimer');
-    if (countdownEl) countdownEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
-    
-    const countEl = document.getElementById('countdownPlayerCount');
-    if (countEl) countEl.textContent = `${currentCount}/${maxCount}`;
-    
-    const listEl = document.getElementById('countdownPlayerList');
-    if (listEl) {
-      if (!playerNames || playerNames.length === 0) {
-        listEl.innerHTML = '<div style="color:rgba(255,255,255,0.7); text-align:center;">Loading players...</div>';
-      } else {
-        listEl.innerHTML = playerNames.map((name, i) => `
-          <div style="color:#fff; padding:8px; border-bottom:1px solid rgba(255,255,255,0.1);">
-            ${i + 1}. ${escapeHtml(name)}
-          </div>
-        `).join('');
-      }
-    }
-  } catch (e) {}
+
+export function updateCountdownDisplay(remainingMs, players, currentCount, maxCount) {
+  queuePlayerCountDiv.textContent = `${currentCount} / ${maxCount} players`;
+  
+  const seconds = Math.ceil(remainingMs / 1000);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  queueCountdownDiv.textContent = `Match starts in: ${mins}:${secs.toString().padStart(2, '0')}`;
+  
+  queuePlayersList.innerHTML = '';
+  for (const playerName of players) {
+    const playerEl = document.createElement('div');
+    playerEl.style.padding = '8px';
+    playerEl.style.background = 'rgba(79,191,239,0.2)';
+    playerEl.style.borderRadius = '4px';
+    playerEl.style.fontSize = '14px';
+    playerEl.textContent = '✓ ' + playerName;
+    queuePlayersList.appendChild(playerEl);
+  }
 }
 
 // --- Expose core DOM refs early for main.js usage ---
@@ -448,19 +516,16 @@ state.dom = {
   mouseMovementCheckbox, keyboardMovementCheckbox, clickMovementCheckbox, graphicsQuality, showCoordinatesCheckbox,
   skillTooltip,
   transientMessage,
-  // death overlay
   deathOverlay,
   respawnBtn,
-  // reconnect overlay
   reconnectOverlay,
-  // mode selection
+  modeSelectScreen,
+  queueScreen,
   showModeSelectScreen,
   hideModeSelectScreen,
   showQueueScreen,
   hideQueueScreen,
   updateQueueDisplay,
-  showCountdownScreen,
-  hideCountdownScreen,
   updateCountdownDisplay
 };
 
@@ -598,26 +663,21 @@ export function hideSkillTooltip() {
   skillTooltip.style.display = 'none';
 }
 
-// Helper to create an <img> element for an item with no "@2x" derivation.
-// Returns the created <img> element.
+// Helper to create an <img> element for an item
 function createItemImageElement(it, cssFit = 'contain') {
   const img = new Image();
   img.style.width = '100%';
   img.style.height = '100%';
   img.style.objectFit = cssFit;
   img.alt = it.name || 'item';
-
-  // Use the exact provided path only — avoid attempting @2x derivation that may 404.
   img.src = it.img;
-
   img.onerror = () => {
-    // caller will handle fallback by listening to 'error'
+    // caller will handle fallback
   };
   return img;
 }
 
-// --- Gear UI ---
-// Gear button (match settings button 44x44) using supplied icon at assets/ui/gearpanel.png
+// --- GEAR UI ---
 const gearButton = document.createElement('button');
 gearButton.id = 'gearButton';
 gearButton.title = 'Character / Gear';
@@ -644,7 +704,7 @@ gearButton.style.backgroundSize = '60%';
 gearButton.textContent = '';
 document.body.appendChild(gearButton);
 
-// Gear panel (hidden by default)
+// Gear panel
 const gearPanel = document.createElement('div');
 gearPanel.id = 'gearPanel';
 gearPanel.style.position = 'fixed';
@@ -702,7 +762,6 @@ statsBox.style.display = 'flex';
 statsBox.style.flexDirection = 'column';
 statsBox.style.gap = '6px';
 statsBox.style.fontSize = '13px';
-gearPanel.appendChild(statsBox);
 
 function updateStatsBox() {
   statsBox.innerHTML = '';
@@ -739,7 +798,7 @@ gearButton.addEventListener('click', () => {
   }
 });
 
-// --- Inventory UI (bottom-right) ---
+// --- INVENTORY UI (bottom-right) ---
 const inventoryContainer = document.createElement('div');
 inventoryContainer.id = 'inventoryContainer';
 inventoryContainer.style.position = 'fixed';
@@ -862,7 +921,7 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
 }
 document.body.appendChild(inventoryContainer);
 
-// --- Gear slots creation (with drag/drop) ---
+// --- GEAR SLOTS ---
 gearSlots = [];
 for (let i = 0; i < state.EQUIP_SLOTS; i++) {
   const slot = document.createElement('div');
@@ -921,7 +980,9 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       c.textBaseline = 'middle';
       c.fillText(it.icon || (it.name ? it.name.charAt(0) : '?'), 32, 34);
       try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
-    } catch (err) {}
+    } catch (err) {
+      // ignore drag image errors
+    }
   });
 
   slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; });
@@ -1026,7 +1087,7 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
 }
 gearPanel.insertBefore(slotsContainer, statsBox);
 
-// --- Slot visuals & helpers ---
+// --- SLOT VISUALS & HELPERS ---
 export function updateSlotVisual(slotIndex) {
   const slotEl = gearSlots[slotIndex];
   if (!slotEl) return;
@@ -1118,7 +1179,7 @@ export function updateAllSlotVisuals() {
   updateStatsBox();
 }
 
-// --- Inventory visuals & drag handlers ---
+// --- INVENTORY VISUALS & DRAG HANDLERS ---
 function inventoryDragStartHandler(e) {
   const srcSlot = Number(this.dataset.index != null ? this.dataset.index : (this.parentElement && this.parentElement.dataset.index) || -1);
   const item = state.inventory[srcSlot];
@@ -1236,6 +1297,7 @@ export function removeItemFromInventory(slotIndex) {
   return it;
 }
 
+// Initialize visuals
 updateInventoryVisuals();
 updateAllSlotVisuals();
 
@@ -1351,7 +1413,7 @@ export function hideInventory() {
   } catch (e) {}
 }
 
-// --- Export & extend state.dom with new UI pieces ---
+// --- Export & extend state.dom ---
 state.dom.gearButton = gearButton;
 state.dom.gearPanel = gearPanel;
 state.dom.gearSlots = gearSlots;
@@ -1369,29 +1431,12 @@ state.dom.showInventory = showInventory;
 state.dom.hideInventory = hideInventory;
 
 export default {
-  canvas,
-  ctx,
-  titleScreen,
-  usernameInput,
-  playButton,
-  loadingScreen,
-  loadingPlayerEl,
-  loadingPlayerNameEl,
-  loadingTextEl,
-  chatPanel,
-  chatLog,
-  chatInput,
-  chatSend,
-  settingsBtn,
-  settingsPanel,
-  settingsClose,
-  tabButtons,
-  tabContents,
-  mouseMovementCheckbox,
-  keyboardMovementCheckbox,
-  clickMovementCheckbox,
-  graphicsQuality,
-  showCoordinatesCheckbox,
+  canvas, ctx,
+  titleScreen, usernameInput, playButton,
+  loadingScreen, loadingPlayerEl, loadingPlayerNameEl, loadingTextEl,
+  chatPanel, chatLog, chatInput, chatSend,
+  settingsBtn, settingsPanel, settingsClose, tabButtons, tabContents,
+  mouseMovementCheckbox, keyboardMovementCheckbox, clickMovementCheckbox, graphicsQuality, showCoordinatesCheckbox,
   skillTooltip,
   transientMessage,
   showTransientMessage,
@@ -1429,7 +1474,5 @@ export default {
   showQueueScreen,
   hideQueueScreen,
   updateQueueDisplay,
-  showCountdownScreen,
-  hideCountdownScreen,
   updateCountdownDisplay
 };

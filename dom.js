@@ -561,6 +561,9 @@ gearClose.style.color = '#ddd';
 gearClose.style.cursor = 'pointer';
 gearClose.style.fontSize = '16px';
 gearClose.style.zIndex = '10010';
+gearClose.style.padding = '0';
+gearClose.style.width = '24px';
+gearClose.style.height = '24px';
 gearClose.addEventListener('click', () => { gearPanel.style.display = 'none'; gearOverlay.style.display = 'none'; });
 gearTitleRow.appendChild(gearClose);
 gearPanel.appendChild(gearTitleRow);
@@ -667,10 +670,7 @@ gearButton.addEventListener('click', () => {
   }
 });
 
-// [Inventory section and remaining code from the previous version continues below - keeping it unchanged]
-
-// ... [Include all the inventory creation code and remaining functions from the previous version] ...
-
+// --- Inventory UI (bottom-right) ---
 const inventoryContainer = document.createElement('div');
 inventoryContainer.id = 'inventoryContainer';
 inventoryContainer.style.position = 'fixed';
@@ -793,7 +793,7 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
 }
 document.body.appendChild(inventoryContainer);
 
-// Gear slots creation
+// --- Gear slots creation ---
 gearSlots = [];
 for (let i = 0; i < state.EQUIP_SLOTS; i++) {
   const slot = document.createElement('div');

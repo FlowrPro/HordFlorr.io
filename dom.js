@@ -538,6 +538,7 @@ gearPanel.style.zIndex = '10006';
 gearPanel.style.display = 'none';
 gearPanel.style.pointerEvents = 'auto';
 gearPanel.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+gearPanel.style.position = 'relative';
 
 const gearTitleRow = document.createElement('div');
 gearTitleRow.style.display = 'flex';
@@ -559,6 +560,7 @@ gearClose.style.border = 'none';
 gearClose.style.color = '#ddd';
 gearClose.style.cursor = 'pointer';
 gearClose.style.fontSize = '16px';
+gearClose.style.zIndex = '10010';
 gearClose.addEventListener('click', () => { gearPanel.style.display = 'none'; gearOverlay.style.display = 'none'; });
 gearTitleRow.appendChild(gearClose);
 gearPanel.appendChild(gearTitleRow);
@@ -601,15 +603,11 @@ function updateStatsBox() {
 gearPanel.appendChild(statsBox);
 document.body.appendChild(gearPanel);
 
-// CREATE OVERLAY AS SEPARATE FIXED ELEMENT (KEY FIX!)
+// CREATE OVERLAY AS ABSOLUTE ELEMENT INSIDE PANEL
 const gearOverlay = document.createElement('div');
 gearOverlay.id = 'gearOverlay';
-gearOverlay.style.position = 'fixed';
-gearOverlay.style.top = '80px';
-gearOverlay.style.right = '16px';
-gearOverlay.style.width = '340px';
-gearOverlay.style.maxWidth = '92vw';
-gearOverlay.style.height = 'auto';
+gearOverlay.style.position = 'absolute';
+gearOverlay.style.inset = '0';
 gearOverlay.style.borderRadius = '10px';
 gearOverlay.style.background = 'rgba(0,0,0,0.7)';
 gearOverlay.style.display = 'none';
@@ -617,10 +615,7 @@ gearOverlay.style.alignItems = 'center';
 gearOverlay.style.justifyContent = 'center';
 gearOverlay.style.zIndex = '10008';
 gearOverlay.style.pointerEvents = 'auto';
-gearOverlay.style.paddingTop = '12px';
-gearOverlay.style.paddingBottom = '12px';
-gearOverlay.style.boxSizing = 'border-box';
-gearOverlay.style.minHeight = '200px';
+gearOverlay.style.flexDirection = 'column';
 
 const overlayText = document.createElement('div');
 overlayText.textContent = 'Coming soon';
@@ -631,7 +626,7 @@ overlayText.style.textAlign = 'center';
 overlayText.style.textShadow = '0 2px 8px rgba(0,0,0,0.9)';
 
 gearOverlay.appendChild(overlayText);
-document.body.appendChild(gearOverlay);
+gearPanel.appendChild(gearOverlay);
 
 function blockSlotInteractionWhileOverlayActive(slot) {
   slot.addEventListener('click', (e) => {
@@ -675,10 +670,6 @@ gearButton.addEventListener('click', () => {
 // [Inventory section and remaining code from the previous version continues below - keeping it unchanged]
 
 // ... [Include all the inventory creation code and remaining functions from the previous version] ...
-
-// CONTINUING WITH INVENTORY AND REMAINING SECTIONS (unchanged from previous file):
-
-// ... continuing with inventory creation, slot creation, and all remaining code ...
 
 const inventoryContainer = document.createElement('div');
 inventoryContainer.id = 'inventoryContainer';
@@ -1210,9 +1201,6 @@ updateAllSlotVisuals();
         gearPanel.style.right = '';
         gearPanel.style.left = pos.left + 'px';
         gearPanel.style.top = pos.top + 'px';
-        gearOverlay.style.right = '';
-        gearOverlay.style.left = pos.left + 'px';
-        gearOverlay.style.top = pos.top + 'px';
       }
     }
   } catch (e) {}
@@ -1245,9 +1233,6 @@ updateAllSlotVisuals();
     gearPanel.style.right = '';
     gearPanel.style.left = rect.left + 'px';
     gearPanel.style.top = rect.top + 'px';
-    gearOverlay.style.right = '';
-    gearOverlay.style.left = rect.left + 'px';
-    gearOverlay.style.top = rect.top + 'px';
     document.body.style.userSelect = 'none';
     dragHandle.style.cursor = 'grabbing';
   }
@@ -1261,8 +1246,6 @@ updateAllSlotVisuals();
     const clamped = clampPosition(left, top, panelW, panelH);
     gearPanel.style.left = clamped.left + 'px';
     gearPanel.style.top = clamped.top + 'px';
-    gearOverlay.style.left = clamped.left + 'px';
-    gearOverlay.style.top = clamped.top + 'px';
   }
 
   function endDrag() {

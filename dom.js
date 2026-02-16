@@ -330,6 +330,114 @@ export function hideReconnectOverlay() {
   } catch (e) {}
 }
 
+// --- Mode Selection Screen Helpers ---
+export function showModeSelectScreen() {
+  try {
+    if (state.dom.titleScreen) state.dom.titleScreen.style.display = 'none';
+    if (state.dom.loadingScreen) state.dom.loadingScreen.style.display = 'none';
+    const modeScreen = document.getElementById('modeSelectScreen');
+    if (modeScreen) {
+      modeScreen.style.display = 'flex';
+      modeScreen.setAttribute('aria-hidden', 'false');
+    }
+  } catch (e) {}
+}
+export function hideModeSelectScreen() {
+  try {
+    const modeScreen = document.getElementById('modeSelectScreen');
+    if (modeScreen) {
+      modeScreen.style.display = 'none';
+      modeScreen.setAttribute('aria-hidden', 'true');
+    }
+  } catch (e) {}
+}
+
+// --- Queue Screen Helpers ---
+export function showQueueScreen() {
+  try {
+    hideModeSelectScreen();
+    const queueScreen = document.getElementById('queueScreen');
+    if (queueScreen) {
+      queueScreen.style.display = 'flex';
+      queueScreen.setAttribute('aria-hidden', 'false');
+    }
+  } catch (e) {}
+}
+export function hideQueueScreen() {
+  try {
+    const queueScreen = document.getElementById('queueScreen');
+    if (queueScreen) {
+      queueScreen.style.display = 'none';
+      queueScreen.setAttribute('aria-hidden', 'true');
+    }
+  } catch (e) {}
+}
+export function updateQueueDisplay(playerNames, currentCount, maxCount) {
+  try {
+    const countEl = document.getElementById('queueCount');
+    if (countEl) countEl.textContent = `${currentCount}/${maxCount}`;
+    
+    const listEl = document.getElementById('queuePlayerList');
+    if (listEl) {
+      if (!playerNames || playerNames.length === 0) {
+        listEl.innerHTML = '<div style="color:rgba(255,255,255,0.7); text-align:center;">Waiting for players...</div>';
+      } else {
+        listEl.innerHTML = playerNames.map((name, i) => `
+          <div style="color:#fff; padding:8px; border-bottom:1px solid rgba(255,255,255,0.1);">
+            ${i + 1}. ${escapeHtml(name)}
+          </div>
+        `).join('');
+      }
+    }
+  } catch (e) {}
+}
+
+// --- Countdown Screen Helpers ---
+export function showCountdownScreen() {
+  try {
+    hideQueueScreen();
+    const countdownScreen = document.getElementById('countdownScreen');
+    if (countdownScreen) {
+      countdownScreen.style.display = 'flex';
+      countdownScreen.setAttribute('aria-hidden', 'false');
+    }
+  } catch (e) {}
+}
+export function hideCountdownScreen() {
+  try {
+    const countdownScreen = document.getElementById('countdownScreen');
+    if (countdownScreen) {
+      countdownScreen.style.display = 'none';
+      countdownScreen.setAttribute('aria-hidden', 'true');
+    }
+  } catch (e) {}
+}
+export function updateCountdownDisplay(remainingMs, playerNames, currentCount, maxCount) {
+  try {
+    const seconds = Math.ceil(remainingMs / 1000);
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    const countdownEl = document.getElementById('countdownTimer');
+    if (countdownEl) countdownEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+    
+    const countEl = document.getElementById('countdownPlayerCount');
+    if (countEl) countEl.textContent = `${currentCount}/${maxCount}`;
+    
+    const listEl = document.getElementById('countdownPlayerList');
+    if (listEl) {
+      if (!playerNames || playerNames.length === 0) {
+        listEl.innerHTML = '<div style="color:rgba(255,255,255,0.7); text-align:center;">Loading players...</div>';
+      } else {
+        listEl.innerHTML = playerNames.map((name, i) => `
+          <div style="color:#fff; padding:8px; border-bottom:1px solid rgba(255,255,255,0.1);">
+            ${i + 1}. ${escapeHtml(name)}
+          </div>
+        `).join('');
+      }
+    }
+  } catch (e) {}
+}
+
 // --- Expose core DOM refs early for main.js usage ---
 state.dom = {
   canvas, ctx,
@@ -344,7 +452,16 @@ state.dom = {
   deathOverlay,
   respawnBtn,
   // reconnect overlay
-  reconnectOverlay
+  reconnectOverlay,
+  // mode selection
+  showModeSelectScreen,
+  hideModeSelectScreen,
+  showQueueScreen,
+  hideQueueScreen,
+  updateQueueDisplay,
+  showCountdownScreen,
+  hideCountdownScreen,
+  updateCountdownDisplay
 };
 
 // Hide chat panel until game is ready
@@ -431,7 +548,6 @@ export function cleanupAfterFailedLoad(reason) {
   if (state.dom.usernameInput) state.dom.usernameInput.disabled = false;
   if (state.dom.chatPanel) state.dom.chatPanel.style.display = 'none';
   if (state.dom.chatInput) state.dom.chatInput.disabled = true;
-  // hide inventory as well
   try { if (state.dom.inventoryContainer) state.dom.inventoryContainer.style.display = 'none'; } catch (e) {}
   state.isLoading = false;
   state.welcomeReceived = false;
@@ -500,7 +616,7 @@ function createItemImageElement(it, cssFit = 'contain') {
   return img;
 }
 
-// ----------------- Gear UI -----------------
+// --- Gear UI ---
 // Gear button (match settings button 44x44) using supplied icon at assets/ui/gearpanel.png
 const gearButton = document.createElement('button');
 gearButton.id = 'gearButton';
@@ -578,7 +694,7 @@ slotsContainer.style.justifyContent = 'center';
 slotsContainer.style.marginBottom = '12px';
 
 // gear slots (will be populated below)
-let gearSlots = []; // will be filled in after we create slots
+let gearSlots = [];
 
 // small stats display
 const statsBox = document.createElement('div');
@@ -623,8 +739,7 @@ gearButton.addEventListener('click', () => {
   }
 });
 
-// ----------------- Inventory UI (bottom-right) -----------------
-// inventory starts hidden until the game is loaded
+// --- Inventory UI (bottom-right) ---
 const inventoryContainer = document.createElement('div');
 inventoryContainer.id = 'inventoryContainer';
 inventoryContainer.style.position = 'fixed';
@@ -633,10 +748,9 @@ inventoryContainer.style.right = '12px';
 inventoryContainer.style.zIndex = 10005;
 inventoryContainer.style.padding = '10px';
 inventoryContainer.style.borderRadius = '10px';
-inventoryContainer.style.background = 'rgba(20,20,22,0.55)'; // semi-transparent grey
+inventoryContainer.style.background = 'rgba(20,20,22,0.55)';
 inventoryContainer.style.boxShadow = '0 10px 30px rgba(0,0,0,0.6)';
 inventoryContainer.style.pointerEvents = 'auto';
-// keep hidden until game ready
 inventoryContainer.style.display = 'none';
 inventoryContainer.style.gridTemplateColumns = 'repeat(4, 64px)';
 inventoryContainer.style.gridAutoRows = '64px';
@@ -702,29 +816,23 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
       if (!item) { showTransientMessage('No item to move', 900); return; }
       if (state.inventory[destIdx]) {
         const dstItem = state.inventory[destIdx];
-        // move gear -> inventory, and place dstItem into gear slot
         state.inventory[destIdx] = item;
         state.equipment[srcSlot] = dstItem;
-        // apply bonuses locally
         state.applyEquipmentBonuses();
         updateInventorySlotVisual(destIdx);
         updateSlotVisual(srcSlot);
         updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage('Swapped gear and inventory item', 1000);
-        // notify server: slot srcSlot now contains dstItem (or null)
         sendEquipUpdate(srcSlot);
       } else {
-        // move gear -> inventory, unequip slot
         state.inventory[destIdx] = item;
         state.unequipItem(srcSlot);
-        // apply bonuses locally already done by unequipItem
         updateInventorySlotVisual(destIdx);
         updateSlotVisual(srcSlot);
         updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage('Moved to inventory', 900);
-        // notify server that slot srcSlot is now empty
         sendEquipUpdate(srcSlot);
       }
     } else if (data.source === 'external') {
@@ -754,7 +862,7 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
 }
 document.body.appendChild(inventoryContainer);
 
-// ----------------- Gear slots creation (with drag/drop) -----------------
+// --- Gear slots creation (with drag/drop) ---
 gearSlots = [];
 for (let i = 0; i < state.EQUIP_SLOTS; i++) {
   const slot = document.createElement('div');
@@ -789,7 +897,6 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
     try { e.dataTransfer.setData('text/plain', JSON.stringify(payload)); } catch (err) {}
     try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
 
-    // try to draw a representative drag image: prefer item.img if preloaded/loaded, otherwise glyph canvas fallback
     try {
       const dragCanvas = document.createElement('canvas');
       dragCanvas.width = 64; dragCanvas.height = 64;
@@ -797,10 +904,9 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       c.fillStyle = 'rgba(0,0,0,0.6)';
       c.fillRect(0,0,64,64);
 
-      // If item has image and it's already cached/loaded, draw it to drag image.
       if (it.img) {
         const img = new Image();
-        img.src = it.img; // do NOT attempt @2x derivation
+        img.src = it.img;
         if (img.complete && img.naturalWidth > 0) {
           const pad = 6;
           c.drawImage(img, pad, pad, 64 - pad*2, 64 - pad*2);
@@ -809,16 +915,13 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
         }
       }
 
-      // glyph fallback
       c.fillStyle = '#fff';
       c.font = '32px system-ui, Arial';
       c.textAlign = 'center';
       c.textBaseline = 'middle';
       c.fillText(it.icon || (it.name ? it.name.charAt(0) : '?'), 32, 34);
       try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
-    } catch (err) {
-      // ignore drag image errors
-    }
+    } catch (err) {}
   });
 
   slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; });
@@ -841,26 +944,21 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       if (!existing) {
         state.equipItem(dst, item);
         state.inventory[srcInv] = null;
-        // visuals & stats
         updateInventorySlotVisual(srcInv);
         updateSlotVisual(dst);
         updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage(`Equipped ${item.name}`, 1000);
-        // notify server about updated equip
         sendEquipUpdate(dst);
       } else {
-        // swap inventory <-> equipment
         state.equipment[dst] = item;
         state.inventory[srcInv] = existing;
-        // apply bonuses locally
         state.applyEquipmentBonuses();
         updateSlotVisual(dst);
         updateInventorySlotVisual(srcInv);
         updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage('Swapped with inventory item', 1000);
-        // notify server about updated equip slot
         sendEquipUpdate(dst);
       }
     } else if (data.source === 'gear') {
@@ -875,7 +973,6 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       updateSlotVisual(srcGear);
       updateStatsBox();
       showTransientMessage('Swapped gear slots', 900);
-      // notify server for both changed slots
       sendEquipUpdate(dst);
       sendEquipUpdate(srcGear);
     } else if (data.source === 'external') {
@@ -918,7 +1015,6 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       updateSlotVisual(idx);
       updateStatsBox();
       showTransientMessage('Unequipped to inventory', 1000);
-      // notify server slot is now empty
       sendEquipUpdate(idx);
     } else {
       showTransientMessage('Inventory full — cannot unequip', 1200);
@@ -930,8 +1026,7 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
 }
 gearPanel.insertBefore(slotsContainer, statsBox);
 
-// ----------------- Slot visuals & helpers -----------------
-// Updated so gear slot displays the same image as inventory when item.img is present.
+// --- Slot visuals & helpers ---
 export function updateSlotVisual(slotIndex) {
   const slotEl = gearSlots[slotIndex];
   if (!slotEl) return;
@@ -949,13 +1044,11 @@ export function updateSlotVisual(slotIndex) {
     slotEl.appendChild(plus);
     slotEl.title = `Empty slot ${slotIndex + 1}`;
     slotEl.draggable = false;
-    // remove tooltip listeners
     slotEl.onmouseenter = null;
     slotEl.onmouseleave = null;
     return;
   }
 
-  // If item has an image path, show it here exactly like inventory
   if (it.img && typeof it.img === 'string') {
     const imgEl = createItemImageElement(it, 'contain');
     imgEl.addEventListener('error', () => {
@@ -990,14 +1083,12 @@ export function updateSlotVisual(slotIndex) {
     slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
     slotEl.draggable = true;
 
-    // tooltip on hover
     slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
     slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
     slotEl.onmouseleave = () => { hideItemTooltip(); };
     return;
   }
 
-  // Fallback: show letter/icon
   const icon = document.createElement('div');
   icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
   icon.style.fontSize = '14px';
@@ -1017,7 +1108,6 @@ export function updateSlotVisual(slotIndex) {
   slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
   slotEl.draggable = true;
 
-  // tooltip on hover
   slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
   slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
   slotEl.onmouseleave = () => { hideItemTooltip(); };
@@ -1028,7 +1118,7 @@ export function updateAllSlotVisuals() {
   updateStatsBox();
 }
 
-// ----------------- Inventory visuals & drag handlers -----------------
+// --- Inventory visuals & drag handlers ---
 function inventoryDragStartHandler(e) {
   const srcSlot = Number(this.dataset.index != null ? this.dataset.index : (this.parentElement && this.parentElement.dataset.index) || -1);
   const item = state.inventory[srcSlot];
@@ -1043,7 +1133,6 @@ function inventoryDragStartHandler(e) {
     const c = dragCanvas.getContext('2d');
     c.fillStyle = 'rgba(0,0,0,0.6)';
     c.fillRect(0,0,64,64);
-    // try to draw the image if it's already loaded; do NOT attempt @2x derivation
     if (item.img) {
       const img = new Image();
       img.src = item.img;
@@ -1073,7 +1162,6 @@ function updateInventorySlotVisual(slotIndex) {
 
   const it = state.inventory[slotIndex];
   if (!it) {
-    // empty
     const plus = document.createElement('div');
     plus.textContent = '';
     plus.style.opacity = '0.0';
@@ -1086,7 +1174,6 @@ function updateInventorySlotVisual(slotIndex) {
     return;
   }
 
-  // If item has an image path (it.img), show it
   if (it.img && typeof it.img === 'string') {
     const img = createItemImageElement(it, 'contain');
     img.addEventListener('error', () => {
@@ -1100,17 +1187,14 @@ function updateInventorySlotVisual(slotIndex) {
     inner.appendChild(img);
     slotEl.title = `${it.name || 'Item'}`;
     slotEl.draggable = true;
-    // attach drag handler
     slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
     slotEl.addEventListener('dragstart', inventoryDragStartHandler);
-    // tooltip
     slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
     slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
     slotEl.onmouseleave = () => { hideItemTooltip(); };
     return;
   }
 
-  // Fallback: show letter/icon
   const icon = document.createElement('div');
   icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
   icon.style.fontSize = '20px';
@@ -1152,11 +1236,10 @@ export function removeItemFromInventory(slotIndex) {
   return it;
 }
 
-// Initialize visuals (inventory hidden until shown)
 updateInventoryVisuals();
 updateAllSlotVisuals();
 
-// ----------------- Make gearPanel draggable and persist position -----------------
+// --- Make gearPanel draggable and persist position ---
 (function makeGearPanelDraggable() {
   if (!gearPanel) return;
 
@@ -1171,7 +1254,7 @@ updateAllSlotVisuals();
         gearPanel.style.top = pos.top + 'px';
       }
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {}
 
   let dragging = false;
   let dragOffsetX = 0;
@@ -1255,7 +1338,7 @@ updateAllSlotVisuals();
   window.addEventListener('touchend', () => { endDrag(); });
 })();
 
-// ----------------- Inventory show/hide helpers -----------------
+// --- Inventory show/hide helpers ---
 export function showInventory() {
   try {
     inventoryContainer.style.display = 'grid';
@@ -1268,7 +1351,7 @@ export function hideInventory() {
   } catch (e) {}
 }
 
-// ----------------- Export & extend state.dom with new UI pieces -----------------
+// --- Export & extend state.dom with new UI pieces ---
 state.dom.gearButton = gearButton;
 state.dom.gearPanel = gearPanel;
 state.dom.gearSlots = gearSlots;
@@ -1285,7 +1368,6 @@ state.dom.updateInventoryVisuals = updateInventoryVisuals;
 state.dom.showInventory = showInventory;
 state.dom.hideInventory = hideInventory;
 
-// Export default convenience object (keeps previous API)
 export default {
   canvas,
   ctx,
@@ -1328,7 +1410,6 @@ export default {
   setReconnectCancelCallback,
   showReconnectOverlay,
   hideReconnectOverlay,
-  // gear & inventory
   gearButton,
   gearPanel,
   gearSlots,
@@ -1342,5 +1423,13 @@ export default {
   removeItemFromInventory,
   updateInventoryVisuals,
   showInventory,
-  hideInventory
+  hideInventory,
+  showModeSelectScreen,
+  hideModeSelectScreen,
+  showQueueScreen,
+  hideQueueScreen,
+  updateQueueDisplay,
+  showCountdownScreen,
+  hideCountdownScreen,
+  updateCountdownDisplay
 };

@@ -601,15 +601,14 @@ function updateStatsBox() {
 gearPanel.appendChild(statsBox);
 document.body.appendChild(gearPanel);
 
-// CREATE OVERLAY AS SEPARATE FIXED ELEMENT (KEY FIX!)
+// CREATE OVERLAY AS ABSOLUTE ELEMENT INSIDE PANEL
 const gearOverlay = document.createElement('div');
 gearOverlay.id = 'gearOverlay';
-gearOverlay.style.position = 'fixed';
-gearOverlay.style.top = '80px';
-gearOverlay.style.right = '16px';
-gearOverlay.style.width = '340px';
-gearOverlay.style.maxWidth = '92vw';
-gearOverlay.style.height = 'auto';
+gearOverlay.style.position = 'absolute';
+gearOverlay.style.top = '0';
+gearOverlay.style.left = '0';
+gearOverlay.style.right = '0';
+gearOverlay.style.bottom = '0';
 gearOverlay.style.borderRadius = '10px';
 gearOverlay.style.background = 'rgba(0,0,0,0.7)';
 gearOverlay.style.display = 'none';
@@ -617,10 +616,7 @@ gearOverlay.style.alignItems = 'center';
 gearOverlay.style.justifyContent = 'center';
 gearOverlay.style.zIndex = '10008';
 gearOverlay.style.pointerEvents = 'auto';
-gearOverlay.style.paddingTop = '12px';
-gearOverlay.style.paddingBottom = '12px';
-gearOverlay.style.boxSizing = 'border-box';
-gearOverlay.style.minHeight = '200px';
+gearOverlay.style.flexDirection = 'column';
 
 const overlayText = document.createElement('div');
 overlayText.textContent = 'Coming soon';
@@ -631,7 +627,7 @@ overlayText.style.textAlign = 'center';
 overlayText.style.textShadow = '0 2px 8px rgba(0,0,0,0.9)';
 
 gearOverlay.appendChild(overlayText);
-document.body.appendChild(gearOverlay);
+gearPanel.appendChild(gearOverlay);
 
 function blockSlotInteractionWhileOverlayActive(slot) {
   slot.addEventListener('click', (e) => {

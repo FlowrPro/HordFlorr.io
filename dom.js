@@ -559,6 +559,10 @@ gearClose.style.border = 'none';
 gearClose.style.color = '#ddd';
 gearClose.style.cursor = 'pointer';
 gearClose.style.fontSize = '16px';
+gearClose.style.zIndex = '10010';
+gearClose.style.padding = '0';
+gearClose.style.width = '24px';
+gearClose.style.height = '24px';
 gearClose.addEventListener('click', () => { gearPanel.style.display = 'none'; gearOverlay.style.display = 'none'; });
 gearTitleRow.appendChild(gearClose);
 gearPanel.appendChild(gearTitleRow);
@@ -601,14 +605,14 @@ function updateStatsBox() {
 gearPanel.appendChild(statsBox);
 document.body.appendChild(gearPanel);
 
-// CREATE OVERLAY AS ABSOLUTE ELEMENT INSIDE PANEL
+// CREATE OVERLAY AS FIXED ELEMENT THAT MATCHES PANEL POSITION
 const gearOverlay = document.createElement('div');
 gearOverlay.id = 'gearOverlay';
-gearOverlay.style.position = 'absolute';
-gearOverlay.style.top = '0';
-gearOverlay.style.left = '0';
-gearOverlay.style.right = '0';
-gearOverlay.style.bottom = '0';
+gearOverlay.style.position = 'fixed';
+gearOverlay.style.top = '80px';
+gearOverlay.style.right = '16px';
+gearOverlay.style.width = '340px';
+gearOverlay.style.maxWidth = '92vw';
 gearOverlay.style.borderRadius = '10px';
 gearOverlay.style.background = 'rgba(0,0,0,0.7)';
 gearOverlay.style.display = 'none';
@@ -617,6 +621,10 @@ gearOverlay.style.justifyContent = 'center';
 gearOverlay.style.zIndex = '10008';
 gearOverlay.style.pointerEvents = 'auto';
 gearOverlay.style.flexDirection = 'column';
+gearOverlay.style.paddingTop = '50px';
+gearOverlay.style.paddingBottom = '12px';
+gearOverlay.style.boxSizing = 'border-box';
+gearOverlay.style.minHeight = '250px';
 
 const overlayText = document.createElement('div');
 overlayText.textContent = 'Coming soon';
@@ -627,7 +635,7 @@ overlayText.style.textAlign = 'center';
 overlayText.style.textShadow = '0 2px 8px rgba(0,0,0,0.9)';
 
 gearOverlay.appendChild(overlayText);
-gearPanel.appendChild(gearOverlay);
+document.body.appendChild(gearOverlay);
 
 function blockSlotInteractionWhileOverlayActive(slot) {
   slot.addEventListener('click', (e) => {
@@ -668,14 +676,7 @@ gearButton.addEventListener('click', () => {
   }
 });
 
-// [Inventory section and remaining code from the previous version continues below - keeping it unchanged]
-
-// ... [Include all the inventory creation code and remaining functions from the previous version] ...
-
-// CONTINUING WITH INVENTORY AND REMAINING SECTIONS (unchanged from previous file):
-
-// ... continuing with inventory creation, slot creation, and all remaining code ...
-
+// --- Inventory UI (bottom-right) ---
 const inventoryContainer = document.createElement('div');
 inventoryContainer.id = 'inventoryContainer';
 inventoryContainer.style.position = 'fixed';
@@ -798,7 +799,7 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
 }
 document.body.appendChild(inventoryContainer);
 
-// Gear slots creation
+// --- Gear slots creation ---
 gearSlots = [];
 for (let i = 0; i < state.EQUIP_SLOTS; i++) {
   const slot = document.createElement('div');

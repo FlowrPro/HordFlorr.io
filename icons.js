@@ -4,7 +4,7 @@
 //   await preloadIcons(); // optional await - function returns a Promise
 //   const img = getSkillIcon('warrior','slash'); // may be an HTMLImageElement or null
 
-const ICON_BASE = 'assets/icons'; // adjust if you place icons elsewhere
+const ICON_BASE = 'assets/icons';
 
 // cache: map[className][type] -> { img, status:'loading'|'loaded'|'error' }
 const cache = Object.create(null);
@@ -25,7 +25,6 @@ export function preloadIcons(manifest = null) {
       if (!cache[key] || cache[key].status === 'error') toLoad.push({ cls: m.class, type: m.type });
     }
   }
-  // If nothing to load (no manifest) return resolved Promise
   if (!toLoad.length) return Promise.resolve();
 
   const promises = toLoad.map(({ cls, type }) => {
@@ -47,7 +46,6 @@ export function getSkillIcon(cls, type) {
   if (!key) return null;
   const entry = cache[key];
   if (entry && entry.status === 'loaded') return entry.img;
-  // lazily start load if not started
   if (!entry) {
     const img = new Image();
     img.src = `${ICON_BASE}/${encodeURIComponent(cls)}/${encodeURIComponent(type)}.png`;

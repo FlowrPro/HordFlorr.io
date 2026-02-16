@@ -172,33 +172,61 @@ export function handleServerMessage(msg) {
 
   // --- MATCHMAKING MESSAGES ---
   if (msg.t === 'queue_update') {
+    console.log('📊 QUEUE UPDATE:', msg);
     const queuePlayers = msg.players || [];
     state.queuePlayers = queuePlayers.map(p => p.name);
     const currentCount = queuePlayers.length;
     const maxCount = 10;
     try {
       updateQueueDisplay(state.queuePlayers, currentCount, maxCount);
+      console.log(`✓ Queue updated: ${currentCount}/${maxCount} players`);
     } catch (e) { console.error('Error updating queue display:', e); }
+    return;
+    
   } else if (msg.t === 'match_created') {
+    console.log('🎮 MATCH CREATED:', msg);
     state.matchId = msg.matchId;
     state.matchCountdownMs = msg.countdownMs || 120000;
     state.gameState = 'countdown';
-    console.log('Match created, countdown starting');
+    state.matchCountdownStartedAt = Date.now();
+    console.log('✓ Match created, countdown starting for:', state.matchCountdownMs, 'ms');
+    return;
+    
   } else if (msg.t === 'match_countdown') {
+    console.log('⏱️ MATCH COUNTDOWN:', msg);
     const remaining = msg.remainingMs || 0;
     const countdownPlayers = msg.players || [];
     state.matchCountdownMs = remaining;
     const currentCount = countdownPlayers.length;
     const maxCount = 10;
+    
+    // If less than MIN_PLAYERS and countdown still going, show message
+    if (currentCount < 4 && remaining > 0) {
+      console.warn('⚠️ Not enough players:', currentCount, '- need 4, countdown still going');
+    }
+    
     try {
       updateCountdownDisplay(remaining, countdownPlayers.map(p => p.name), currentCount, maxCount);
     } catch (e) { console.error('Error updating countdown display:', e); }
     
-    if (remaining <= 0) {
-      state.gameState = 'in_game';
+    // If countdown reached zero with not enough players, return to mode select
+    if (remaining <= 0 && currentCount < 4) {
+      console.warn('❌ Match cancelled: insufficient players');
+      state.gameState = 'mode_select';
+      try { hideQueueScreen(); } catch (e) {}
+      try { showModeSelectScreen(); } catch (e) {}
+      try { showTransientMessage('Match cancelled: not enough players', 2500); } catch (e) {}
+      return;
     }
+    
+    // If countdown reached zero with enough players, wait for match_start
+    if (remaining <= 0) {
+      console.log('⏱️ Countdown ended - waiting for match_start...');
+    }
+    return;
+    
   } else if (msg.t === 'match_start') {
-    console.log('MATCH START received');
+    console.log('🚀 MATCH START received');
     state.gameState = 'in_game';
     state.matchId = msg.matchId;
     state.matchTimeRemainingMs = msg.matchDurationMs || 1800000;
@@ -262,6 +290,9 @@ export function handleServerMessage(msg) {
       if (state.dom && typeof state.dom.showInventory === 'function') state.dom.showInventory();
       else if (state.dom && state.dom.inventoryContainer) state.dom.inventoryContainer.style.display = 'grid';
     } catch (e) {}
+    
+    console.log('✓ Match started - entering game');
+    return;
   }
   
   // --- CORE WELCOME ---
@@ -311,10 +342,11 @@ export function handleServerMessage(msg) {
     if (state.dom.titleScreen) state.dom.titleScreen.style.display = 'none';
     
     try {
-      dom.showModeSelectScreen();
+      showModeSelectScreen();
     } catch (e) {
       console.error('Error showing mode select screen:', e);
     }
+    return;
   }
   
   // --- SNAPSHOT ---
@@ -563,6 +595,7 @@ export function handleServerMessage(msg) {
         else if (state.dom && state.dom.inventoryContainer) state.dom.inventoryContainer.style.display = 'grid';
       } catch (e) {}
     }
+    return;
   }
   
   // --- CHAT ---
@@ -772,7 +805,7 @@ export function handleServerMessage(msg) {
   } 
   else if (msg.t === 'cast_rejected') {
     const reason = msg.reason || 'rejected';
-    dom.showTransientMessage(`Cast rejected: ${reason}`, 1500);
+    showTransientMessage(`Cast rejected: ${reason}`, 1500);
 
     if (typeof msg.slot === 'number') {
       const slot = Number(msg.slot) - 1;

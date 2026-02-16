@@ -52,7 +52,7 @@ skillTooltip.id = 'skillTooltip';
 skillTooltip.style.position = 'fixed';
 skillTooltip.style.pointerEvents = 'none';
 skillTooltip.style.display = 'none';
-skillTooltip.style.zIndex = 9999;
+skillTooltip.style.zIndex = '9999';
 skillTooltip.style.background = 'rgba(10,10,12,0.95)';
 skillTooltip.style.color = '#fff';
 skillTooltip.style.padding = '8px';
@@ -61,13 +61,13 @@ skillTooltip.style.fontSize = '12px';
 skillTooltip.style.maxWidth = '220px';
 document.body.appendChild(skillTooltip);
 
-// Item tooltip (wider than skill tooltip, higher z-index to appear over gear panel)
+// Item tooltip (wider than skill tooltip)
 const itemTooltip = document.createElement('div');
 itemTooltip.id = 'itemTooltip';
 itemTooltip.style.position = 'fixed';
 itemTooltip.style.pointerEvents = 'none';
 itemTooltip.style.display = 'none';
-itemTooltip.style.zIndex = 10100; // FIXED: increased from 10000 to appear over gear panel (10006)
+itemTooltip.style.zIndex = '10000';
 itemTooltip.style.background = 'rgba(18,18,20,0.96)';
 itemTooltip.style.color = '#fff';
 itemTooltip.style.padding = '12px';
@@ -118,7 +118,7 @@ transientMessage.style.left = '50%';
 transientMessage.style.transform = 'translateX(-50%)';
 transientMessage.style.pointerEvents = 'none';
 transientMessage.style.display = 'none';
-transientMessage.style.zIndex = 10010;
+transientMessage.style.zIndex = '10010';
 transientMessage.style.background = 'rgba(0,0,0,0.8)';
 transientMessage.style.color = '#fff';
 transientMessage.style.padding = '10px 14px';
@@ -154,7 +154,7 @@ deathOverlay.style.position = 'fixed';
 deathOverlay.style.inset = '0';
 deathOverlay.style.display = 'none';
 deathOverlay.style.visibility = 'hidden';
-deathOverlay.style.zIndex = 10050;
+deathOverlay.style.zIndex = '10050';
 deathOverlay.style.background = 'rgba(20,20,22,0.6)';
 deathOverlay.style.backdropFilter = 'grayscale(40%) blur(2px)';
 deathOverlay.style.webkitBackdropFilter = 'grayscale(40%) blur(2px)';
@@ -254,7 +254,7 @@ reconnectOverlay.id = 'reconnectOverlay';
 reconnectOverlay.style.position = 'fixed';
 reconnectOverlay.style.inset = '0';
 reconnectOverlay.style.display = 'none';
-reconnectOverlay.style.zIndex = 10020;
+reconnectOverlay.style.zIndex = '10020';
 reconnectOverlay.style.background = 'rgba(10,10,12,0.6)';
 reconnectOverlay.style.backdropFilter = 'blur(3px)';
 reconnectOverlay.style.webkitBackdropFilter = 'blur(3px)';
@@ -500,57 +500,6 @@ function createItemImageElement(it, cssFit = 'contain') {
   return img;
 }
 
-// --- DRAG PREVIEW IMAGE HELPER (FIXED) ---
-// Creates a proper drag image with actual item image, not a small icon
-function createDragPreviewImage(item) {
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = 80;
-    canvas.height = 80;
-    const c = canvas.getContext('2d');
-    
-    // Background
-    c.fillStyle = 'rgba(0,0,0,0.7)';
-    c.fillRect(0, 0, 80, 80);
-    c.strokeStyle = 'rgba(255,255,255,0.3)';
-    c.lineWidth = 2;
-    c.strokeRect(0, 0, 80, 80);
-
-    // Try to draw the actual item image
-    if (item.img && typeof item.img === 'string') {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = item.img;
-      
-      // Draw to canvas if already loaded
-      if (img.complete && img.naturalWidth > 0) {
-        const pad = 8;
-        c.drawImage(img, pad, pad, 80 - pad*2, 80 - pad*2);
-      } else {
-        drawItemFallback(c, item);
-      }
-    } else {
-      drawItemFallback(c, item);
-    }
-
-    return canvas;
-  } catch (err) {
-    console.error('createDragPreviewImage error:', err);
-    return null;
-  }
-}
-
-function drawItemFallback(ctx, item) {
-  // Fallback: draw item icon or letter
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 36px system-ui, Arial';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(item.icon || (item.name ? item.name.charAt(0) : '?'), 40, 42);
-}
-
-// --- END DRAG PREVIEW HELPER ---
-
 // ----------------- Gear UI -----------------
 // Gear button (match settings button 44x44) using supplied icon at assets/ui/gearpanel.png
 const gearButton = document.createElement('button');
@@ -564,7 +513,7 @@ gearButton.style.borderRadius = '6px';
 gearButton.style.border = 'none';
 gearButton.style.background = '#bdbdbd';
 gearButton.style.color = '#1e90ff';
-gearButton.style.zIndex = 10005;
+gearButton.style.zIndex = '10005';
 gearButton.style.cursor = 'pointer';
 gearButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.6)';
 gearButton.style.padding = '6px';
@@ -592,7 +541,7 @@ gearPanel.style.color = '#fff';
 gearPanel.style.borderRadius = '10px';
 gearPanel.style.padding = '12px';
 gearPanel.style.boxShadow = '0 14px 60px rgba(0,0,0,0.6)';
-gearPanel.style.zIndex = 10006;
+gearPanel.style.zIndex = '10006';
 gearPanel.style.display = 'none';
 gearPanel.style.pointerEvents = 'auto';
 gearPanel.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial';
@@ -661,7 +610,61 @@ function updateStatsBox() {
 }
 
 gearPanel.appendChild(statsBox);
+
+// Create "Coming soon" overlay for gear panel
+const gearOverlay = document.createElement('div');
+gearOverlay.id = 'gearOverlay';
+gearOverlay.style.position = 'absolute';
+gearOverlay.style.inset = '0';
+gearOverlay.style.background = 'rgba(0,0,0,0.6)';
+gearOverlay.style.borderRadius = '10px';
+gearOverlay.style.display = 'flex';
+gearOverlay.style.alignItems = 'center';
+gearOverlay.style.justifyContent = 'center';
+gearOverlay.style.zIndex = '10007';
+gearOverlay.style.pointerEvents = 'auto';
+
+const overlayText = document.createElement('div');
+overlayText.textContent = 'Coming soon';
+overlayText.style.fontSize = '24px';
+overlayText.style.fontWeight = '800';
+overlayText.style.color = '#fff';
+overlayText.style.textAlign = 'center';
+overlayText.style.textShadow = '0 2px 8px rgba(0,0,0,0.8)';
+
+gearOverlay.appendChild(overlayText);
+gearPanel.style.position = 'relative';
+gearPanel.appendChild(gearOverlay);
+
 document.body.appendChild(gearPanel);
+
+// Helper to block interactions with gear slots when overlay is visible
+function blockSlotInteractionWhileOverlayActive(slot) {
+  slot.addEventListener('click', (e) => {
+    if (gearOverlay.style.display !== 'none') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+  slot.addEventListener('dragstart', (e) => {
+    if (gearOverlay.style.display !== 'none') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+  slot.addEventListener('dragover', (e) => {
+    if (gearOverlay.style.display !== 'none') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+  slot.addEventListener('drop', (e) => {
+    if (gearOverlay.style.display !== 'none') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+}
 
 // Gear toggle
 gearButton.addEventListener('click', () => {
@@ -681,7 +684,7 @@ inventoryContainer.id = 'inventoryContainer';
 inventoryContainer.style.position = 'fixed';
 inventoryContainer.style.bottom = '12px';
 inventoryContainer.style.right = '12px';
-inventoryContainer.style.zIndex = 10005;
+inventoryContainer.style.zIndex = '10005';
 inventoryContainer.style.padding = '10px';
 inventoryContainer.style.borderRadius = '10px';
 inventoryContainer.style.background = 'rgba(20,20,22,0.55)'; // semi-transparent grey
@@ -714,7 +717,7 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
   slot.style.position = 'relative';
   slot.style.cursor = 'default';
   slot.style.userSelect = 'none';
-  slot.draggable = true; // FIXED: set draggable=true directly on slot
+  slot.draggable = false;
 
   const inner = document.createElement('div');
   inner.style.pointerEvents = 'none';
@@ -725,7 +728,6 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
   inner.style.justifyContent = 'center';
   slot.appendChild(inner);
 
-  slot.addEventListener('dragstart', inventoryDragStartHandler);
   slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.14)'; });
   slot.addEventListener('dragleave', (e) => { slot.style.outline = ''; });
   slot.addEventListener('drop', (e) => {
@@ -806,32 +808,6 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
 }
 document.body.appendChild(inventoryContainer);
 
-// --- DRAG START HANDLER FOR INVENTORY (FIXED) ---
-function inventoryDragStartHandler(e) {
-  const srcSlot = Number(this.dataset.index != null ? this.dataset.index : (this.parentElement && this.parentElement.dataset.index) || -1);
-  const item = state.inventory[srcSlot];
-  if (!item || !e.dataTransfer) { e.preventDefault(); return; }
-  
-  const payload = { item: JSON.parse(JSON.stringify(item)), source: 'inventory', index: srcSlot };
-  try { e.dataTransfer.setData('application/json', JSON.stringify(payload)); } catch (err) {}
-  try { e.dataTransfer.setData('text/plain', JSON.stringify(payload)); } catch (err) {}
-  try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
-
-  // FIXED: Use actual drag preview instead of small canvas
-  try {
-    const dragCanvas = createDragPreviewImage(item);
-    if (dragCanvas) {
-      try { e.dataTransfer.setDragImage(dragCanvas, 40, 40); } catch (err) {}
-    }
-  } catch (err) {}
-}
-
-// Attach drag handler to inventory slots
-function attachInventoryDragHandler(slotEl) {
-  slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
-  slotEl.addEventListener('dragstart', inventoryDragStartHandler);
-}
-
 // ----------------- Gear slots creation (with drag/drop) -----------------
 gearSlots = [];
 for (let i = 0; i < state.EQUIP_SLOTS; i++) {
@@ -851,13 +827,13 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
   slot.style.position = 'relative';
   slot.style.cursor = 'pointer';
   slot.style.userSelect = 'none';
-  slot.draggable = true; // FIXED: set draggable=true directly
 
   const lbl = document.createElement('div');
   lbl.textContent = '+';
   lbl.style.opacity = '0.8';
   slot.appendChild(lbl);
 
+  slot.draggable = false;
   slot.addEventListener('dragstart', function (e) {
     const idx = Number(this.dataset.slot);
     const it = state.equipment[idx];
@@ -867,19 +843,65 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
     try { e.dataTransfer.setData('text/plain', JSON.stringify(payload)); } catch (err) {}
     try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
 
-    // FIXED: Use actual drag preview instead of small canvas
+    // try to draw a representative drag image: prefer item.img if preloaded/loaded, otherwise glyph canvas fallback
     try {
-      const dragCanvas = createDragPreviewImage(it);
-      if (dragCanvas) {
-        try { e.dataTransfer.setDragImage(dragCanvas, 40, 40); } catch (err) {}
+      const dragCanvas = document.createElement('canvas');
+      dragCanvas.width = 64; dragCanvas.height = 64;
+      const c = dragCanvas.getContext('2d');
+      c.fillStyle = 'rgba(0,0,0,0.6)';
+      c.fillRect(0,0,64,64);
+
+      // If item has image and it's already cached/loaded, draw it to drag image.
+      if (it.img) {
+        const img = new Image();
+        img.src = it.img; // do NOT attempt @2x derivation
+        if (img.complete && img.naturalWidth > 0) {
+          const pad = 6;
+          c.drawImage(img, pad, pad, 64 - pad*2, 64 - pad*2);
+          try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
+          return;
+        }
       }
-    } catch (err) {}
+
+      // glyph fallback
+      c.fillStyle = '#fff';
+      c.font = '32px system-ui, Arial';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(it.icon || (it.name ? it.name.charAt(0) : '?'), 32, 34);
+      try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
+    } catch (err) {
+      // ignore drag image errors
+    }
   });
 
-  slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; });
-  slot.addEventListener('dragleave', (e) => { slot.style.outline = ''; });
+  slot.addEventListener('dragover', (e) => { 
+    if (gearOverlay.style.display !== 'none') {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    e.preventDefault(); 
+    slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; 
+  });
+  
+  slot.addEventListener('dragleave', (e) => { 
+    if (gearOverlay.style.display !== 'none') {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    slot.style.outline = ''; 
+  });
 
   slot.addEventListener('drop', (e) => {
+    if (gearOverlay.style.display !== 'none') {
+      e.preventDefault();
+      e.stopPropagation();
+      slot.style.outline = '';
+      return;
+    }
+    
     e.preventDefault();
     slot.style.outline = '';
     const raw = (e.dataTransfer && (e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain'))) || '';
@@ -963,6 +985,12 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
   });
 
   slot.addEventListener('click', (e) => {
+    if (gearOverlay.style.display !== 'none') {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    
     const idx = Number(slot.dataset.slot);
     const it = state.equipment[idx];
     if (!it) return;
@@ -980,12 +1008,16 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
     }
   });
 
+  // Apply interaction blocking
+  blockSlotInteractionWhileOverlayActive(slot);
+
   gearSlots.push(slot);
   slotsContainer.appendChild(slot);
 }
 gearPanel.insertBefore(slotsContainer, statsBox);
 
-// --- UPDATED: Slot visuals with proper image display ---
+// ----------------- Slot visuals & helpers -----------------
+// Updated so gear slot displays the same image as inventory when item.img is present.
 export function updateSlotVisual(slotIndex) {
   const slotEl = gearSlots[slotIndex];
   if (!slotEl) return;
@@ -1002,7 +1034,7 @@ export function updateSlotVisual(slotIndex) {
     plus.style.opacity = '0.8';
     slotEl.appendChild(plus);
     slotEl.title = `Empty slot ${slotIndex + 1}`;
-    slotEl.draggable = true; // FIXED: ensure draggable is set
+    slotEl.draggable = false;
     // remove tooltip listeners
     slotEl.onmouseenter = null;
     slotEl.onmouseleave = null;
@@ -1042,7 +1074,7 @@ export function updateSlotVisual(slotIndex) {
     slotEl.appendChild(nameBadge);
 
     slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
-    slotEl.draggable = true; // FIXED: ensure draggable is set
+    slotEl.draggable = true;
 
     // tooltip on hover
     slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
@@ -1069,7 +1101,7 @@ export function updateSlotVisual(slotIndex) {
   slotEl.appendChild(nameBadge);
 
   slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
-  slotEl.draggable = true; // FIXED: ensure draggable is set
+  slotEl.draggable = true;
 
   // tooltip on hover
   slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
@@ -1082,13 +1114,47 @@ export function updateAllSlotVisuals() {
   updateStatsBox();
 }
 
-// --- UPDATED: Inventory visuals with proper image display ---
+// ----------------- Inventory visuals & drag handlers -----------------
+function inventoryDragStartHandler(e) {
+  const srcSlot = Number(this.dataset.index != null ? this.dataset.index : (this.parentElement && this.parentElement.dataset.index) || -1);
+  const item = state.inventory[srcSlot];
+  if (!item || !e.dataTransfer) { e.preventDefault(); return; }
+  const payload = { item: JSON.parse(JSON.stringify(item)), source: 'inventory', index: srcSlot };
+  try { e.dataTransfer.setData('application/json', JSON.stringify(payload)); } catch (err) {}
+  try { e.dataTransfer.setData('text/plain', JSON.stringify(payload)); } catch (err) {}
+  try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
+  try {
+    const dragCanvas = document.createElement('canvas');
+    dragCanvas.width = 64; dragCanvas.height = 64;
+    const c = dragCanvas.getContext('2d');
+    c.fillStyle = 'rgba(0,0,0,0.6)';
+    c.fillRect(0,0,64,64);
+    // try to draw the image if it's already loaded; do NOT attempt @2x derivation
+    if (item.img) {
+      const img = new Image();
+      img.src = item.img;
+      if (img.complete && img.naturalWidth > 0) {
+        const pad = 6;
+        c.drawImage(img, pad, pad, 64 - pad*2, 64 - pad*2);
+        try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
+        return;
+      }
+    }
+    c.fillStyle = '#fff';
+    c.font = '28px system-ui, Arial';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(item.icon || (item.name ? item.name.charAt(0) : '?'), 32, 34);
+    try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
+  } catch (err) {}
+}
+
 function updateInventorySlotVisual(slotIndex) {
   const slotEl = inventorySlots[slotIndex];
   const inner = slotEl && slotEl.firstElementChild;
   if (!slotEl || !inner) return;
   inner.innerHTML = '';
-  slotEl.draggable = false; // FIXED: set initially to false
+  slotEl.draggable = false;
   slotEl.title = `Empty`;
 
   const it = state.inventory[slotIndex];
@@ -1099,6 +1165,7 @@ function updateInventorySlotVisual(slotIndex) {
     plus.style.opacity = '0.0';
     inner.appendChild(plus);
     slotEl.draggable = false;
+    slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
     slotEl.onmouseenter = null;
     slotEl.onmouseleave = null;
     slotEl.onmousemove = null;
@@ -1118,7 +1185,10 @@ function updateInventorySlotVisual(slotIndex) {
     });
     inner.appendChild(img);
     slotEl.title = `${it.name || 'Item'}`;
-    slotEl.draggable = true; // FIXED: set draggable=true for items
+    slotEl.draggable = true;
+    // attach drag handler
+    slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
+    slotEl.addEventListener('dragstart', inventoryDragStartHandler);
     // tooltip
     slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
     slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
@@ -1133,7 +1203,9 @@ function updateInventorySlotVisual(slotIndex) {
   icon.style.pointerEvents = 'none';
   inner.appendChild(icon);
   slotEl.title = `${it.name || 'Item'}`;
-  slotEl.draggable = true; // FIXED: set draggable=true for items
+  slotEl.draggable = true;
+  slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
+  slotEl.addEventListener('dragstart', inventoryDragStartHandler);
   slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
   slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
   slotEl.onmouseleave = () => { hideItemTooltip(); };
@@ -1170,7 +1242,7 @@ export function removeItemFromInventory(slotIndex) {
 updateInventoryVisuals();
 updateAllSlotVisuals();
 
-// --- MAKE GEAR PANEL DRAGGABLE AND PERSIST POSITION ---
+// ----------------- Make gearPanel draggable and persist position -----------------
 (function makeGearPanelDraggable() {
   if (!gearPanel) return;
 
@@ -1219,7 +1291,7 @@ updateAllSlotVisuals();
     dragHandle.style.cursor = 'grabbing';
   }
 
-    function moveDrag(clientX, clientY) {
+  function moveDrag(clientX, clientY) {
     if (!dragging) return;
     const panelW = gearPanel.offsetWidth;
     const panelH = gearPanel.offsetHeight;
@@ -1269,7 +1341,7 @@ updateAllSlotVisuals();
   window.addEventListener('touchend', () => { endDrag(); });
 })();
 
-// --- Inventory show/hide helpers ---
+// ----------------- Inventory show/hide helpers -----------------
 export function showInventory() {
   try {
     inventoryContainer.style.display = 'grid';
@@ -1282,9 +1354,10 @@ export function hideInventory() {
   } catch (e) {}
 }
 
-// --- Export & extend state.dom with new UI pieces ---
+// ----------------- Export & extend state.dom with new UI pieces -----------------
 state.dom.gearButton = gearButton;
 state.dom.gearPanel = gearPanel;
+state.dom.gearOverlay = gearOverlay;
 state.dom.gearSlots = gearSlots;
 state.dom.updateSlotVisual = updateSlotVisual;
 state.dom.updateAllSlotVisuals = updateAllSlotVisuals;
@@ -1337,8 +1410,6 @@ export default {
   cleanupAfterFailedLoad,
   showSkillTooltip,
   hideSkillTooltip,
-  showItemTooltip,
-  hideItemTooltip,
   showDeathOverlay,
   hideDeathOverlay,
   setReconnectCancelCallback,
@@ -1347,6 +1418,7 @@ export default {
   // gear & inventory
   gearButton,
   gearPanel,
+  gearOverlay,
   gearSlots,
   updateSlotVisual,
   updateAllSlotVisuals,

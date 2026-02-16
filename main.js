@@ -61,26 +61,30 @@ export function startGame() {
 }
 
 export function selectMode(mode) {
-  console.log('=== selectMode called ===');
-  console.log('mode:', mode);
-  console.log('state.ws:', state.ws);
-  console.log('state.ws?.readyState:', state.ws?.readyState);
-  console.log('WebSocket.OPEN:', WebSocket.OPEN);
-  console.log('state.welcomeReceived:', state.welcomeReceived);
+  console.log('🎮 === selectMode called with mode:', mode);
+  console.log('🎮 state.welcomeReceived:', state.welcomeReceived);
+  console.log('🎮 state.ws:', state.ws);
+  console.log('🎮 state.ws.readyState:', state.ws?.readyState);
+  console.log('🎮 WebSocket.OPEN constant:', WebSocket.OPEN);
   
   // Ensure we're ready
   if (!state.welcomeReceived) {
-    console.error('Not ready to select mode yet - welcome not received');
+    console.error('❌ Not ready to select mode yet - welcome not received');
     showTransientMessage('Not ready yet - try again', 1500);
     return;
   }
   
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
-    console.error('WebSocket not open!');
+    console.error('❌ WebSocket not open!');
+    console.error('  state.ws exists:', !!state.ws);
+    console.error('  state.ws.readyState:', state.ws?.readyState);
+    console.error('  Expected WebSocket.OPEN:', WebSocket.OPEN);
     showTransientMessage('WebSocket not connected - try again', 1500);
     return;
   }
 
+  console.log('✅ All checks passed, proceeding with mode selection');
+  
   state.gameMode = mode;
   state.gameState = 'queue';
   
@@ -92,14 +96,16 @@ export function selectMode(mode) {
   
   showTransientMessage(`Joining ${mode} queue...`, 1500);
   
-  console.log('Sending join_queue message...');
+  console.log('Sending join_queue message to server...');
   try {
     const msg = { t: 'join_queue', mode: mode };
-    console.log('Message to send:', msg);
+    console.log('📤 Message payload:', msg);
     state.ws.send(JSON.stringify(msg));
-    console.log('✓ Successfully sent join_queue for mode:', mode);
+    console.log('✅ Successfully sent join_queue for mode:', mode);
   } catch (e) {
-    console.error('✗ Failed to send join_queue:', e);
+    console.error('❌ Failed to send join_queue:', e);
+    console.error('   Error message:', e.message);
+    console.error('   Error stack:', e.stack);
     showTransientMessage('Failed to join queue: ' + e.message, 2000);
     // Revert state
     dom.showModeSelectScreen();
@@ -107,6 +113,10 @@ export function selectMode(mode) {
     state.gameState = 'mode_select';
   }
 }
+
+// Make selectMode globally accessible for debugging
+window.selectMode = selectMode;
+console.log('✅ selectMode exported to window.selectMode');
 
 // Wire up play button
 if (state.dom.playButton) {
@@ -130,14 +140,26 @@ function wireUpFfaButton() {
   const ffaBtn = document.getElementById('ffaButton');
   if (ffaBtn) {
     console.log('✓ Found FFA button, wiring click handler');
+    console.log('  Button element:', ffaBtn);
+    console.log('  Button ID:', ffaBtn.id);
+    console.log('  Button text:', ffaBtn.textContent);
+    
     ffaBtn.addEventListener('click', (e) => {
+      console.log('🔴 === FFA BUTTON CLICKED ===');
+      console.log('   Event:', e);
+      console.log('   Event type:', e.type);
       e.preventDefault();
       e.stopPropagation();
-      console.log('=== FFA BUTTON CLICKED ===');
+      console.log('   Calling selectMode("ffa")...');
       selectMode('ffa');
     });
+    
+    // Test click
+    console.log('✅ FFA button listener attached');
   } else {
     console.warn('✗ FFA button not found in DOM');
+    console.warn('   Looking for: #ffaButton');
+    console.warn('   Available buttons:', Array.from(document.querySelectorAll('button')).map(b => ({ id: b.id, text: b.textContent })));
   }
 }
 
@@ -194,7 +216,18 @@ window.moborr = {
   castSkill: input.castSkill,
   selectTarget: (id, kind) => { state.selectedTarget = { id: String(id), kind }; },
   state,
-  dom
+  dom,
+  testSelectMode: () => {
+    console.log('🧪 Testing selectMode...');
+    console.log('Current state:');
+    console.log('  - welcomeReceived:', state.welcomeReceived);
+    console.log('  - gameState:', state.gameState);
+    console.log('  - ws:', state.ws);
+    console.log('  - ws.readyState:', state.ws?.readyState);
+    console.log('Calling selectMode("ffa")...');
+    selectMode('ffa');
+  }
 };
 
 console.log('✓ Main.js initialized - window.moborr is ready');
+console.log('🧪 For testing, use: window.moborr.testSelectMode()');

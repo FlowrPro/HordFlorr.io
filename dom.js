@@ -52,7 +52,7 @@ skillTooltip.id = 'skillTooltip';
 skillTooltip.style.position = 'fixed';
 skillTooltip.style.pointerEvents = 'none';
 skillTooltip.style.display = 'none';
-skillTooltip.style.zIndex = '9999';
+skillTooltip.style.zIndex = 9999;
 skillTooltip.style.background = 'rgba(10,10,12,0.95)';
 skillTooltip.style.color = '#fff';
 skillTooltip.style.padding = '8px';
@@ -67,7 +67,7 @@ itemTooltip.id = 'itemTooltip';
 itemTooltip.style.position = 'fixed';
 itemTooltip.style.pointerEvents = 'none';
 itemTooltip.style.display = 'none';
-itemTooltip.style.zIndex = '10000';
+itemTooltip.style.zIndex = 10000;
 itemTooltip.style.background = 'rgba(18,18,20,0.96)';
 itemTooltip.style.color = '#fff';
 itemTooltip.style.padding = '12px';
@@ -118,7 +118,7 @@ transientMessage.style.left = '50%';
 transientMessage.style.transform = 'translateX(-50%)';
 transientMessage.style.pointerEvents = 'none';
 transientMessage.style.display = 'none';
-transientMessage.style.zIndex = '10010';
+transientMessage.style.zIndex = 10010;
 transientMessage.style.background = 'rgba(0,0,0,0.8)';
 transientMessage.style.color = '#fff';
 transientMessage.style.padding = '10px 14px';
@@ -154,7 +154,7 @@ deathOverlay.style.position = 'fixed';
 deathOverlay.style.inset = '0';
 deathOverlay.style.display = 'none';
 deathOverlay.style.visibility = 'hidden';
-deathOverlay.style.zIndex = '10050';
+deathOverlay.style.zIndex = 10050;
 deathOverlay.style.background = 'rgba(20,20,22,0.6)';
 deathOverlay.style.backdropFilter = 'grayscale(40%) blur(2px)';
 deathOverlay.style.webkitBackdropFilter = 'grayscale(40%) blur(2px)';
@@ -254,7 +254,7 @@ reconnectOverlay.id = 'reconnectOverlay';
 reconnectOverlay.style.position = 'fixed';
 reconnectOverlay.style.inset = '0';
 reconnectOverlay.style.display = 'none';
-reconnectOverlay.style.zIndex = '10020';
+reconnectOverlay.style.zIndex = 10020;
 reconnectOverlay.style.background = 'rgba(10,10,12,0.6)';
 reconnectOverlay.style.backdropFilter = 'blur(3px)';
 reconnectOverlay.style.webkitBackdropFilter = 'blur(3px)';
@@ -483,18 +483,25 @@ export function hideSkillTooltip() {
 }
 
 // Helper to create an <img> element for an item with no "@2x" derivation.
+// Returns the created <img> element.
 function createItemImageElement(it, cssFit = 'contain') {
   const img = new Image();
   img.style.width = '100%';
   img.style.height = '100%';
   img.style.objectFit = cssFit;
   img.alt = it.name || 'item';
+
+  // Use the exact provided path only — avoid attempting @2x derivation that may 404.
   img.src = it.img;
-  img.onerror = () => {};
+
+  img.onerror = () => {
+    // caller will handle fallback by listening to 'error'
+  };
   return img;
 }
 
 // ----------------- Gear UI -----------------
+// Gear button (match settings button 44x44) using supplied icon at assets/ui/gearpanel.png
 const gearButton = document.createElement('button');
 gearButton.id = 'gearButton';
 gearButton.title = 'Character / Gear';
@@ -506,7 +513,7 @@ gearButton.style.borderRadius = '6px';
 gearButton.style.border = 'none';
 gearButton.style.background = '#bdbdbd';
 gearButton.style.color = '#1e90ff';
-gearButton.style.zIndex = '10005';
+gearButton.style.zIndex = 10005;
 gearButton.style.cursor = 'pointer';
 gearButton.style.boxShadow = '0 6px 20px rgba(0,0,0,0.6)';
 gearButton.style.padding = '6px';
@@ -521,7 +528,7 @@ gearButton.style.backgroundSize = '60%';
 gearButton.textContent = '';
 document.body.appendChild(gearButton);
 
-// Gear panel
+// Gear panel (hidden by default)
 const gearPanel = document.createElement('div');
 gearPanel.id = 'gearPanel';
 gearPanel.style.position = 'fixed';
@@ -534,7 +541,7 @@ gearPanel.style.color = '#fff';
 gearPanel.style.borderRadius = '10px';
 gearPanel.style.padding = '12px';
 gearPanel.style.boxShadow = '0 14px 60px rgba(0,0,0,0.6)';
-gearPanel.style.zIndex = '10006';
+gearPanel.style.zIndex = 10006;
 gearPanel.style.display = 'none';
 gearPanel.style.pointerEvents = 'auto';
 gearPanel.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial';
@@ -559,23 +566,27 @@ gearClose.style.border = 'none';
 gearClose.style.color = '#ddd';
 gearClose.style.cursor = 'pointer';
 gearClose.style.fontSize = '16px';
-gearClose.addEventListener('click', () => { gearPanel.style.display = 'none'; gearOverlay.style.display = 'none'; });
+gearClose.addEventListener('click', () => { gearPanel.style.display = 'none'; });
 gearTitleRow.appendChild(gearClose);
 gearPanel.appendChild(gearTitleRow);
 
+// slots container
 const slotsContainer = document.createElement('div');
 slotsContainer.style.display = 'flex';
 slotsContainer.style.gap = '8px';
 slotsContainer.style.justifyContent = 'center';
 slotsContainer.style.marginBottom = '12px';
 
-let gearSlots = [];
+// gear slots (will be populated below)
+let gearSlots = []; // will be filled in after we create slots
 
+// small stats display
 const statsBox = document.createElement('div');
 statsBox.style.display = 'flex';
 statsBox.style.flexDirection = 'column';
 statsBox.style.gap = '6px';
 statsBox.style.fontSize = '13px';
+gearPanel.appendChild(statsBox);
 
 function updateStatsBox() {
   statsBox.innerHTML = '';
@@ -601,96 +612,31 @@ function updateStatsBox() {
 gearPanel.appendChild(statsBox);
 document.body.appendChild(gearPanel);
 
-// CREATE OVERLAY AS SEPARATE FIXED ELEMENT (KEY FIX!)
-const gearOverlay = document.createElement('div');
-gearOverlay.id = 'gearOverlay';
-gearOverlay.style.position = 'fixed';
-gearOverlay.style.top = '80px';
-gearOverlay.style.right = '16px';
-gearOverlay.style.width = '340px';
-gearOverlay.style.maxWidth = '92vw';
-gearOverlay.style.height = 'auto';
-gearOverlay.style.borderRadius = '10px';
-gearOverlay.style.background = 'rgba(0,0,0,0.7)';
-gearOverlay.style.display = 'none';
-gearOverlay.style.alignItems = 'center';
-gearOverlay.style.justifyContent = 'center';
-gearOverlay.style.zIndex = '10008';
-gearOverlay.style.pointerEvents = 'auto';
-gearOverlay.style.paddingTop = '12px';
-gearOverlay.style.paddingBottom = '12px';
-gearOverlay.style.boxSizing = 'border-box';
-gearOverlay.style.minHeight = '200px';
-
-const overlayText = document.createElement('div');
-overlayText.textContent = 'Coming soon';
-overlayText.style.fontSize = '28px';
-overlayText.style.fontWeight = '800';
-overlayText.style.color = '#fff';
-overlayText.style.textAlign = 'center';
-overlayText.style.textShadow = '0 2px 8px rgba(0,0,0,0.9)';
-
-gearOverlay.appendChild(overlayText);
-document.body.appendChild(gearOverlay);
-
-function blockSlotInteractionWhileOverlayActive(slot) {
-  slot.addEventListener('click', (e) => {
-    if (gearOverlay.style.display !== 'none') {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
-  slot.addEventListener('dragstart', (e) => {
-    if (gearOverlay.style.display !== 'none') {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
-  slot.addEventListener('dragover', (e) => {
-    if (gearOverlay.style.display !== 'none') {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
-  slot.addEventListener('drop', (e) => {
-    if (gearOverlay.style.display !== 'none') {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
-}
-
+// Gear toggle
 gearButton.addEventListener('click', () => {
   if (gearPanel.style.display === 'none' || gearPanel.style.display === '') {
     updateAllSlotVisuals();
     updateStatsBox();
     gearPanel.style.display = 'block';
-    gearOverlay.style.display = 'flex';
   } else {
     gearPanel.style.display = 'none';
-    gearOverlay.style.display = 'none';
   }
 });
 
-// [Inventory section and remaining code from the previous version continues below - keeping it unchanged]
-
-// ... [Include all the inventory creation code and remaining functions from the previous version] ...
-
-// CONTINUING WITH INVENTORY AND REMAINING SECTIONS (unchanged from previous file):
-
-// ... continuing with inventory creation, slot creation, and all remaining code ...
-
+// ----------------- Inventory UI (bottom-right) -----------------
+// inventory starts hidden until the game is loaded
 const inventoryContainer = document.createElement('div');
 inventoryContainer.id = 'inventoryContainer';
 inventoryContainer.style.position = 'fixed';
 inventoryContainer.style.bottom = '12px';
 inventoryContainer.style.right = '12px';
-inventoryContainer.style.zIndex = '10005';
+inventoryContainer.style.zIndex = 10005;
 inventoryContainer.style.padding = '10px';
 inventoryContainer.style.borderRadius = '10px';
-inventoryContainer.style.background = 'rgba(20,20,22,0.55)';
+inventoryContainer.style.background = 'rgba(20,20,22,0.55)'; // semi-transparent grey
 inventoryContainer.style.boxShadow = '0 10px 30px rgba(0,0,0,0.6)';
 inventoryContainer.style.pointerEvents = 'auto';
+// keep hidden until game ready
 inventoryContainer.style.display = 'none';
 inventoryContainer.style.gridTemplateColumns = 'repeat(4, 64px)';
 inventoryContainer.style.gridAutoRows = '64px';
@@ -756,23 +702,29 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
       if (!item) { showTransientMessage('No item to move', 900); return; }
       if (state.inventory[destIdx]) {
         const dstItem = state.inventory[destIdx];
+        // move gear -> inventory, and place dstItem into gear slot
         state.inventory[destIdx] = item;
         state.equipment[srcSlot] = dstItem;
+        // apply bonuses locally
         state.applyEquipmentBonuses();
         updateInventorySlotVisual(destIdx);
         updateSlotVisual(srcSlot);
         updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage('Swapped gear and inventory item', 1000);
+        // notify server: slot srcSlot now contains dstItem (or null)
         sendEquipUpdate(srcSlot);
       } else {
+        // move gear -> inventory, unequip slot
         state.inventory[destIdx] = item;
         state.unequipItem(srcSlot);
+        // apply bonuses locally already done by unequipItem
         updateInventorySlotVisual(destIdx);
         updateSlotVisual(srcSlot);
         updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage('Moved to inventory', 900);
+        // notify server that slot srcSlot is now empty
         sendEquipUpdate(srcSlot);
       }
     } else if (data.source === 'external') {
@@ -802,7 +754,7 @@ for (let i = 0; i < state.INV_SLOTS; i++) {
 }
 document.body.appendChild(inventoryContainer);
 
-// Gear slots creation
+// ----------------- Gear slots creation (with drag/drop) -----------------
 gearSlots = [];
 for (let i = 0; i < state.EQUIP_SLOTS; i++) {
   const slot = document.createElement('div');
@@ -837,6 +789,7 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
     try { e.dataTransfer.setData('text/plain', JSON.stringify(payload)); } catch (err) {}
     try { e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
 
+    // try to draw a representative drag image: prefer item.img if preloaded/loaded, otherwise glyph canvas fallback
     try {
       const dragCanvas = document.createElement('canvas');
       dragCanvas.width = 64; dragCanvas.height = 64;
@@ -844,9 +797,10 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       c.fillStyle = 'rgba(0,0,0,0.6)';
       c.fillRect(0,0,64,64);
 
+      // If item has image and it's already cached/loaded, draw it to drag image.
       if (it.img) {
         const img = new Image();
-        img.src = it.img;
+        img.src = it.img; // do NOT attempt @2x derivation
         if (img.complete && img.naturalWidth > 0) {
           const pad = 6;
           c.drawImage(img, pad, pad, 64 - pad*2, 64 - pad*2);
@@ -855,34 +809,22 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
         }
       }
 
+      // glyph fallback
       c.fillStyle = '#fff';
       c.font = '32px system-ui, Arial';
       c.textAlign = 'center';
       c.textBaseline = 'middle';
       c.fillText(it.icon || (it.name ? it.name.charAt(0) : '?'), 32, 34);
       try { e.dataTransfer.setDragImage(dragCanvas, 32, 32); } catch (err) {}
-    } catch (err) {}
+    } catch (err) {
+      // ignore drag image errors
+    }
   });
 
-  slot.addEventListener('dragover', (e) => { 
-    if (gearOverlay.style.display !== 'none') { e.preventDefault(); e.stopPropagation(); return; }
-    e.preventDefault(); 
-    slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; 
-  });
-  
-  slot.addEventListener('dragleave', (e) => { 
-    if (gearOverlay.style.display !== 'none') { e.preventDefault(); e.stopPropagation(); return; }
-    slot.style.outline = ''; 
-  });
+  slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.style.outline = '2px dashed rgba(255,255,255,0.18)'; });
+  slot.addEventListener('dragleave', (e) => { slot.style.outline = ''; });
 
   slot.addEventListener('drop', (e) => {
-    if (gearOverlay.style.display !== 'none') {
-      e.preventDefault();
-      e.stopPropagation();
-      slot.style.outline = '';
-      return;
-    }
-    
     e.preventDefault();
     slot.style.outline = '';
     const raw = (e.dataTransfer && (e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain'))) || '';
@@ -899,21 +841,26 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       if (!existing) {
         state.equipItem(dst, item);
         state.inventory[srcInv] = null;
+        // visuals & stats
         updateInventorySlotVisual(srcInv);
         updateSlotVisual(dst);
         updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage(`Equipped ${item.name}`, 1000);
+        // notify server about updated equip
         sendEquipUpdate(dst);
       } else {
+        // swap inventory <-> equipment
         state.equipment[dst] = item;
         state.inventory[srcInv] = existing;
+        // apply bonuses locally
         state.applyEquipmentBonuses();
         updateSlotVisual(dst);
         updateInventorySlotVisual(srcInv);
         updateAllSlotVisuals();
         updateStatsBox();
         showTransientMessage('Swapped with inventory item', 1000);
+        // notify server about updated equip slot
         sendEquipUpdate(dst);
       }
     } else if (data.source === 'gear') {
@@ -928,6 +875,7 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       updateSlotVisual(srcGear);
       updateStatsBox();
       showTransientMessage('Swapped gear slots', 900);
+      // notify server for both changed slots
       sendEquipUpdate(dst);
       sendEquipUpdate(srcGear);
     } else if (data.source === 'external') {
@@ -960,12 +908,6 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
   });
 
   slot.addEventListener('click', (e) => {
-    if (gearOverlay.style.display !== 'none') {
-      e.preventDefault();
-      e.stopPropagation();
-      return;
-    }
-    
     const idx = Number(slot.dataset.slot);
     const it = state.equipment[idx];
     if (!it) return;
@@ -976,18 +918,20 @@ for (let i = 0; i < state.EQUIP_SLOTS; i++) {
       updateSlotVisual(idx);
       updateStatsBox();
       showTransientMessage('Unequipped to inventory', 1000);
+      // notify server slot is now empty
       sendEquipUpdate(idx);
     } else {
       showTransientMessage('Inventory full — cannot unequip', 1200);
     }
   });
 
-  blockSlotInteractionWhileOverlayActive(slot);
   gearSlots.push(slot);
   slotsContainer.appendChild(slot);
 }
 gearPanel.insertBefore(slotsContainer, statsBox);
 
+// ----------------- Slot visuals & helpers -----------------
+// Updated so gear slot displays the same image as inventory when item.img is present.
 export function updateSlotVisual(slotIndex) {
   const slotEl = gearSlots[slotIndex];
   if (!slotEl) return;
@@ -1005,11 +949,13 @@ export function updateSlotVisual(slotIndex) {
     slotEl.appendChild(plus);
     slotEl.title = `Empty slot ${slotIndex + 1}`;
     slotEl.draggable = false;
+    // remove tooltip listeners
     slotEl.onmouseenter = null;
     slotEl.onmouseleave = null;
     return;
   }
 
+  // If item has an image path, show it here exactly like inventory
   if (it.img && typeof it.img === 'string') {
     const imgEl = createItemImageElement(it, 'contain');
     imgEl.addEventListener('error', () => {
@@ -1044,12 +990,14 @@ export function updateSlotVisual(slotIndex) {
     slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
     slotEl.draggable = true;
 
+    // tooltip on hover
     slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
     slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
     slotEl.onmouseleave = () => { hideItemTooltip(); };
     return;
   }
 
+  // Fallback: show letter/icon
   const icon = document.createElement('div');
   icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
   icon.style.fontSize = '14px';
@@ -1069,6 +1017,7 @@ export function updateSlotVisual(slotIndex) {
   slotEl.title = `${it.name}\n${JSON.stringify(it.stats || {})}`;
   slotEl.draggable = true;
 
+  // tooltip on hover
   slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
   slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
   slotEl.onmouseleave = () => { hideItemTooltip(); };
@@ -1079,6 +1028,7 @@ export function updateAllSlotVisuals() {
   updateStatsBox();
 }
 
+// ----------------- Inventory visuals & drag handlers -----------------
 function inventoryDragStartHandler(e) {
   const srcSlot = Number(this.dataset.index != null ? this.dataset.index : (this.parentElement && this.parentElement.dataset.index) || -1);
   const item = state.inventory[srcSlot];
@@ -1093,6 +1043,7 @@ function inventoryDragStartHandler(e) {
     const c = dragCanvas.getContext('2d');
     c.fillStyle = 'rgba(0,0,0,0.6)';
     c.fillRect(0,0,64,64);
+    // try to draw the image if it's already loaded; do NOT attempt @2x derivation
     if (item.img) {
       const img = new Image();
       img.src = item.img;
@@ -1122,6 +1073,7 @@ function updateInventorySlotVisual(slotIndex) {
 
   const it = state.inventory[slotIndex];
   if (!it) {
+    // empty
     const plus = document.createElement('div');
     plus.textContent = '';
     plus.style.opacity = '0.0';
@@ -1134,6 +1086,7 @@ function updateInventorySlotVisual(slotIndex) {
     return;
   }
 
+  // If item has an image path (it.img), show it
   if (it.img && typeof it.img === 'string') {
     const img = createItemImageElement(it, 'contain');
     img.addEventListener('error', () => {
@@ -1147,14 +1100,17 @@ function updateInventorySlotVisual(slotIndex) {
     inner.appendChild(img);
     slotEl.title = `${it.name || 'Item'}`;
     slotEl.draggable = true;
+    // attach drag handler
     slotEl.removeEventListener('dragstart', inventoryDragStartHandler);
     slotEl.addEventListener('dragstart', inventoryDragStartHandler);
+    // tooltip
     slotEl.onmouseenter = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
     slotEl.onmousemove = (ev) => { showItemTooltip(it, ev.clientX, ev.clientY); };
     slotEl.onmouseleave = () => { hideItemTooltip(); };
     return;
   }
 
+  // Fallback: show letter/icon
   const icon = document.createElement('div');
   icon.textContent = it.icon || (it.name ? it.name.charAt(0) : '?');
   icon.style.fontSize = '20px';
@@ -1173,6 +1129,7 @@ function updateInventoryVisuals() {
   for (let i = 0; i < inventorySlots.length; i++) updateInventorySlotVisual(i);
 }
 
+// API: add/remove inventory
 export function addItemToInventory(item, preferredIndex = -1) {
   if (!item) return -1;
   if (typeof preferredIndex === 'number' && preferredIndex >= 0 && preferredIndex < state.INV_SLOTS && !state.inventory[preferredIndex]) {
@@ -1195,9 +1152,11 @@ export function removeItemFromInventory(slotIndex) {
   return it;
 }
 
+// Initialize visuals (inventory hidden until shown)
 updateInventoryVisuals();
 updateAllSlotVisuals();
 
+// ----------------- Make gearPanel draggable and persist position -----------------
 (function makeGearPanelDraggable() {
   if (!gearPanel) return;
 
@@ -1210,12 +1169,9 @@ updateAllSlotVisuals();
         gearPanel.style.right = '';
         gearPanel.style.left = pos.left + 'px';
         gearPanel.style.top = pos.top + 'px';
-        gearOverlay.style.right = '';
-        gearOverlay.style.left = pos.left + 'px';
-        gearOverlay.style.top = pos.top + 'px';
       }
     }
-  } catch (e) {}
+  } catch (e) { /* ignore */ }
 
   let dragging = false;
   let dragOffsetX = 0;
@@ -1245,9 +1201,6 @@ updateAllSlotVisuals();
     gearPanel.style.right = '';
     gearPanel.style.left = rect.left + 'px';
     gearPanel.style.top = rect.top + 'px';
-    gearOverlay.style.right = '';
-    gearOverlay.style.left = rect.left + 'px';
-    gearOverlay.style.top = rect.top + 'px';
     document.body.style.userSelect = 'none';
     dragHandle.style.cursor = 'grabbing';
   }
@@ -1261,8 +1214,6 @@ updateAllSlotVisuals();
     const clamped = clampPosition(left, top, panelW, panelH);
     gearPanel.style.left = clamped.left + 'px';
     gearPanel.style.top = clamped.top + 'px';
-    gearOverlay.style.left = clamped.left + 'px';
-    gearOverlay.style.top = clamped.top + 'px';
   }
 
   function endDrag() {
@@ -1304,6 +1255,7 @@ updateAllSlotVisuals();
   window.addEventListener('touchend', () => { endDrag(); });
 })();
 
+// ----------------- Inventory show/hide helpers -----------------
 export function showInventory() {
   try {
     inventoryContainer.style.display = 'grid';
@@ -1316,14 +1268,14 @@ export function hideInventory() {
   } catch (e) {}
 }
 
+// ----------------- Export & extend state.dom with new UI pieces -----------------
 state.dom.gearButton = gearButton;
 state.dom.gearPanel = gearPanel;
-state.dom.gearOverlay = gearOverlay;
 state.dom.gearSlots = gearSlots;
 state.dom.updateSlotVisual = updateSlotVisual;
 state.dom.updateAllSlotVisuals = updateAllSlotVisuals;
-state.dom.showGearPanel = () => { updateAllSlotVisuals(); updateStatsBox(); gearPanel.style.display = 'block'; gearOverlay.style.display = 'flex'; };
-state.dom.hideGearPanel = () => { gearPanel.style.display = 'none'; gearOverlay.style.display = 'none'; };
+state.dom.showGearPanel = () => { updateAllSlotVisuals(); updateStatsBox(); gearPanel.style.display = 'block'; };
+state.dom.hideGearPanel = () => { gearPanel.style.display = 'none'; };
 
 state.dom.inventoryContainer = inventoryContainer;
 state.dom.inventorySlots = inventorySlots;
@@ -1333,18 +1285,62 @@ state.dom.updateInventoryVisuals = updateInventoryVisuals;
 state.dom.showInventory = showInventory;
 state.dom.hideInventory = hideInventory;
 
+// Export default convenience object (keeps previous API)
 export default {
-  canvas, ctx, titleScreen, usernameInput, playButton,
-  loadingScreen, loadingPlayerEl, loadingPlayerNameEl, loadingTextEl,
-  chatPanel, chatLog, chatInput, chatSend,
-  settingsBtn, settingsPanel, settingsClose, tabButtons, tabContents,
-  mouseMovementCheckbox, keyboardMovementCheckbox, clickMovementCheckbox, graphicsQuality, showCoordinatesCheckbox,
-  skillTooltip, transientMessage, showTransientMessage, hideTransientMessage,
-  appendChatMessage, focusChat, unfocusChat, loadSettings, saveSettings,
-  setLoadingText, cleanupAfterFailedLoad, showSkillTooltip, hideSkillTooltip,
-  showDeathOverlay, hideDeathOverlay, setReconnectCancelCallback, showReconnectOverlay, hideReconnectOverlay,
-  gearButton, gearPanel, gearOverlay, gearSlots, updateSlotVisual, updateAllSlotVisuals,
-  showGearPanel: state.dom.showGearPanel, hideGearPanel: state.dom.hideGearPanel,
-  inventoryContainer, inventorySlots, addItemToInventory, removeItemFromInventory,
-  updateInventoryVisuals, showInventory, hideInventory
+  canvas,
+  ctx,
+  titleScreen,
+  usernameInput,
+  playButton,
+  loadingScreen,
+  loadingPlayerEl,
+  loadingPlayerNameEl,
+  loadingTextEl,
+  chatPanel,
+  chatLog,
+  chatInput,
+  chatSend,
+  settingsBtn,
+  settingsPanel,
+  settingsClose,
+  tabButtons,
+  tabContents,
+  mouseMovementCheckbox,
+  keyboardMovementCheckbox,
+  clickMovementCheckbox,
+  graphicsQuality,
+  showCoordinatesCheckbox,
+  skillTooltip,
+  transientMessage,
+  showTransientMessage,
+  hideTransientMessage,
+  appendChatMessage,
+  focusChat,
+  unfocusChat,
+  loadSettings,
+  saveSettings,
+  setLoadingText,
+  cleanupAfterFailedLoad,
+  showSkillTooltip,
+  hideSkillTooltip,
+  showDeathOverlay,
+  hideDeathOverlay,
+  setReconnectCancelCallback,
+  showReconnectOverlay,
+  hideReconnectOverlay,
+  // gear & inventory
+  gearButton,
+  gearPanel,
+  gearSlots,
+  updateSlotVisual,
+  updateAllSlotVisuals,
+  showGearPanel: state.dom.showGearPanel,
+  hideGearPanel: state.dom.hideGearPanel,
+  inventoryContainer,
+  inventorySlots,
+  addItemToInventory,
+  removeItemFromInventory,
+  updateInventoryVisuals,
+  showInventory,
+  hideInventory
 };

@@ -3,16 +3,6 @@ export const state = (function(){
   // --- CONFIG: set your server URL here ---
   const SERVER_URL = 'wss://hordflorr-io-backend.onrender.com'; // <-- your Render URL
 
-  // --- GAME MODES & MATCHMAKING ---
-  let gameMode = null; // 'ffa' or null (not selected yet)
-  let gameState = 'mode_select'; // 'mode_select' → 'queue' → 'countdown' → 'in_game' → 'match_end'
-  let matchId = null; // current match ID
-  let matchCountdownMs = 120000; // 2 minutes
-  let matchTimeRemainingMs = 1800000; // 30 minutes (1800 seconds)
-  let queuePlayers = []; // list of player names in current queue
-  let matchLeaderboard = []; // { playerId, playerName, kills }
-  let currentPlayerKills = 0;
-
   // --- World (client-side) ---
   const map = {
     type: 'circle', // 'circle' or 'square'; server welcome will set
@@ -30,10 +20,10 @@ export const state = (function(){
     radius: 28,
     color: '#ffd54a',
     baseSpeed: 380,
-    vx: 0, vy: 0,           // smoothed velocity used locally
+    vx: 0, vy: 0,
     facing: -Math.PI / 2,
     name: '',
-    class: 'warrior',      // default chosen class until user picks one
+    class: 'warrior',
     level: 1,
     xp: 0,
     maxHp: 200,
@@ -43,15 +33,15 @@ export const state = (function(){
     buffDurationMul: 1.0,
     serverX: null,
     serverY: null,
-    localBuffs: [],        // optimistic visual buffs: {type, until, multiplier}
+    localBuffs: [],
     stunnedUntil: 0,
     dead: false,
     awaitingRespawn: false,
     _baseMaxHp: 200,
     _baseBaseSpeed: 380,
     _baseBaseDamage: 18,
-    kills: 0, // track kills in FFA
-    deaths: 0 // track deaths in FFA
+    kills: 0,
+    deaths: 0
   };
 
   // --- Movement smoothing / interp params ---
@@ -78,6 +68,8 @@ export const state = (function(){
   let pointer = { x: 0, y: 0 };
   let mouseWorld = { x: 0, y: 0 };
   let clickTarget = null;
+
+  // selected target for target skills: { id, kind: 'mob'|'player' }
   let selectedTarget = null;
 
   // --- Hotbar & XP UI config ---
@@ -145,7 +137,7 @@ export const state = (function(){
   const INV_SLOTS = 16;
   const inventory = new Array(INV_SLOTS).fill(null);
 
-  // --- Equipment ---
+  // --- Equipment (5 slots) ---
   const EQUIP_SLOTS = 5;
   const equipment = new Array(EQUIP_SLOTS).fill(null);
 
@@ -159,6 +151,17 @@ export const state = (function(){
   let loadingTimeout = null;
   let welcomeReceived = false;
   let gotFirstSnapshot = false;
+
+  // --- MATCHMAKING STATE ---
+  let gameMode = null; // 'ffa', etc.
+  let gameState = 'title'; // 'title', 'mode_select', 'queue', 'countdown', 'in_game'
+  let matchId = null;
+  let matchCountdownMs = 0;
+  let matchTimeRemainingMs = 0;
+  let matchStartTime = null;
+  let matchLeaderboard = [];
+  let currentPlayerKills = 0;
+  let queuePlayers = [];
 
   // --- Chat (non-persistent) ---
   const CHAT_MAX = 50;
@@ -190,7 +193,12 @@ export const state = (function(){
 
     const prevMax = player.maxHp || player._baseMaxHp;
     player.maxHp = Math.max(1, Math.round((player._baseMaxHp || 200) + bonus.maxHp));
-    player.hp = Math.min(player.maxHp, (typeof player.hp === 'number' ? player.hp : player.maxHp));
+    const delta = player.maxHp - prevMax;
+    if (delta > 0) {
+      player.hp = Math.min(player.maxHp, (player.hp || prevMax) + delta);
+    } else {
+      player.hp = Math.min(player.hp || player.maxHp, player.maxHp);
+    }
 
     player.baseDamage = Math.max(0, (player._baseBaseDamage || 18) + bonus.baseDamage);
     player.baseSpeed = Math.max(1, (player._baseBaseSpeed || 380) + bonus.baseSpeed);
@@ -204,6 +212,7 @@ export const state = (function(){
     applyEquipmentBonuses();
     return true;
   }
+
   function unequipItem(slotIndex) {
     if (typeof slotIndex !== 'number' || slotIndex < 0 || slotIndex >= equipment.length) return false;
     equipment[slotIndex] = null;
@@ -213,69 +222,56 @@ export const state = (function(){
 
   return {
     SERVER_URL,
-    // Game mode & matchmaking
-    gameMode,
-    gameState,
-    matchId,
-    matchCountdownMs,
-    matchTimeRemainingMs,
-    queuePlayers,
-    matchLeaderboard,
-    currentPlayerKills,
-    // Map
     map,
-    // Player
     player,
-    // Movement
     MOVE_ACCEL,
     TURN_SPEED,
     MIN_MOVEMENT_FOR_FACING,
     RECONCILE_SPEED,
     REMOTE_INTERP_SPEED,
-    // Remote entities
     remotePlayers,
     remoteMobs,
     remoteProjectiles,
     remoteEffects,
-    // Input
     keys,
     pointer,
     mouseWorld,
     clickTarget,
     selectedTarget,
-    // Hotbar
     HOTBAR_SLOTS,
     CLASS_SKILLS,
     CLASS_COOLDOWNS,
     cooldowns,
     SKILL_META,
     SKILL_ICONS,
-    // Settings
     defaultSettings,
     settings,
-    // Inventory
     INV_SLOTS,
     inventory,
-    // Equipment
     EQUIP_SLOTS,
     equipment,
     equipItem,
     unequipItem,
     applyEquipmentBonuses,
-    // Network
     ws,
     sendInputInterval,
     seq,
-    // Lifecycle
     isLoading,
     loadingTimeout,
     welcomeReceived,
     gotFirstSnapshot,
-    // Chat
+    gameMode,
+    gameState,
+    matchId,
+    matchCountdownMs,
+    matchTimeRemainingMs,
+    matchStartTime,
+    matchLeaderboard,
+    currentPlayerKills,
+    queuePlayers,
     CHAT_MAX,
     pendingChatIds,
     chatFocused,
-    // DOM
     dom: {}
   };
 })();

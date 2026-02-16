@@ -1,17 +1,15 @@
 // WebSocket connection, server message handling, and network lifecycle.
-// All logic preserved from original main.js; adapted to use the shared state and dom helpers.
+// Phase 2: Full matchmaking support
 
 import { state } from './state.js';
-import dom, { appendChatMessage, setLoadingText, cleanupAfterFailedLoad, showDeathOverlay, showReconnectOverlay, hideReconnectOverlay, setReconnectCancelCallback, showTransientMessage } from './dom.js';
+import dom, { appendChatMessage, setLoadingText, cleanupAfterFailedLoad, showDeathOverlay, showReconnectOverlay, hideReconnectOverlay, setReconnectCancelCallback, showTransientMessage, showModeSelectScreen, showQueueScreen, hideQueueScreen, updateQueueDisplay, updateCountdownDisplay } from './dom.js';
 
-// Set to true to re-enable the verbose WS logs (useful for debugging)
 const VERBOSE_NETWORK = false;
 
 let ws = null;
 let sendInputInterval = null;
 let seq = 0;
 
-// Reconnect helpers
 let reconnectAttempts = 0;
 let reconnectTimer = null;
 let reconnectCountdownTimer = null;
@@ -62,8 +60,6 @@ export function connectToServer() {
       cleanupAfterFailedLoad('send_join_failed');
       return;
     }
-    // NOTE: do NOT start sending input immediately. Wait for server welcome to avoid "need_join" flood.
-    // sendInputInterval will be started when a welcome message is received.
   });
 
   ws.addEventListener('message', (ev) => {
@@ -113,7 +109,6 @@ export function connectToServer() {
 
 export function sendInputPacket() {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-  // Only send input after we've received the welcome — this prevents "need_join" spam
   if (!state.welcomeReceived) return;
   const input = computeInputVector();
   try { state.ws.send(JSON.stringify({ t: 'input', seq: ++seq, input })); } catch (e) {}
@@ -126,7 +121,6 @@ function computeInputVector() {
   return (typeof state.computeInputVector === 'function') ? state.computeInputVector() : { x: 0, y: 0 };
 }
 
-// Auto-reconnect implementation ------------------------------------------------
 function startReconnect() {
   if (reconnectTimer || reconnectCancelled) return;
   reconnectAttempts = Math.max(1, reconnectAttempts + 1);
@@ -173,45 +167,45 @@ function cancelReconnect() {
 
 try { setReconnectCancelCallback(cancelReconnect); } catch (e) {}
 
-// Handle server messages
 export function handleServerMessage(msg) {
   if (!msg || !msg.t) return;
-  
+
   // --- MATCHMAKING MESSAGES ---
   if (msg.t === 'queue_update') {
     const queuePlayers = msg.players || [];
     state.queuePlayers = queuePlayers.map(p => p.name);
     const currentCount = queuePlayers.length;
     const maxCount = 10;
-    dom.updateQueueDisplay(state.queuePlayers, currentCount, maxCount);
+    try {
+      updateQueueDisplay(state.queuePlayers, currentCount, maxCount);
+    } catch (e) { console.error('Error updating queue display:', e); }
   } else if (msg.t === 'match_created') {
     state.matchId = msg.matchId;
     state.matchCountdownMs = msg.countdownMs || 120000;
     state.gameState = 'countdown';
-    dom.showCountdownScreen();
+    console.log('Match created, countdown starting');
   } else if (msg.t === 'match_countdown') {
     const remaining = msg.remainingMs || 0;
     const countdownPlayers = msg.players || [];
     state.matchCountdownMs = remaining;
     const currentCount = countdownPlayers.length;
     const maxCount = 10;
-    dom.updateCountdownDisplay(remaining, countdownPlayers.map(p => p.name), currentCount, maxCount);
+    try {
+      updateCountdownDisplay(remaining, countdownPlayers.map(p => p.name), currentCount, maxCount);
+    } catch (e) { console.error('Error updating countdown display:', e); }
     
     if (remaining <= 0) {
       state.gameState = 'in_game';
     }
-  } else if (msg.t === 'match_cancelled') {
-    const reason = msg.reason || 'unknown';
-    const message = msg.message || 'Match was cancelled';
-    showTransientMessage(message, 2000);
-    state.gameState = 'mode_select';
-    state.matchId = null;
-    dom.showModeSelectScreen();
   } else if (msg.t === 'match_start') {
+    console.log('MATCH START received');
     state.gameState = 'in_game';
     state.matchId = msg.matchId;
     state.matchTimeRemainingMs = msg.matchDurationMs || 1800000;
-    dom.hideCountdownScreen();
+    state.matchStartTime = Date.now();
+    
+    try { hideQueueScreen(); } catch (e) {}
+    
     if (msg.id) state.player.id = String(msg.id);
     if (msg.player) {
       if (typeof msg.player.level === 'number') state.player.level = msg.player.level;
@@ -231,6 +225,7 @@ export function handleServerMessage(msg) {
         state.player.hp = Math.min(state.player.hp || state.player.maxHp, state.player.maxHp);
       }
     }
+    
     if (msg.mapType === 'square' || msg.mapSize || msg.mapHalf || msg.mapRadius) {
       state.map.type = 'square';
       state.map.half = (msg.mapHalf || msg.mapRadius || (msg.mapSize ? msg.mapSize / 2 : state.map.half));
@@ -245,12 +240,14 @@ export function handleServerMessage(msg) {
       state.map.walls = Array.isArray(msg.walls) ? msg.walls : [];
       state.map._jaggedNeedsUpdate = true;
     }
+    
     if (typeof msg.spawnX === 'number' && typeof msg.spawnY === 'number') {
-      state.player.x = msg.spawnX; state.player.y = msg.spawnY;
+      state.player.x = msg.spawnX;
+      state.player.y = msg.spawnY;
     }
-    state.welcomeReceived = true;
-    setLoadingText('Welcome received — loading world…');
-
+    
+    state.gotFirstSnapshot = false;
+    
     try {
       if (typeof state.applyEquipmentBonuses === 'function') state.applyEquipmentBonuses();
       if (state.dom && typeof state.dom.updateAllSlotVisuals === 'function') state.dom.updateAllSlotVisuals();
@@ -265,15 +262,10 @@ export function handleServerMessage(msg) {
       if (state.dom && typeof state.dom.showInventory === 'function') state.dom.showInventory();
       else if (state.dom && state.dom.inventoryContainer) state.dom.inventoryContainer.style.display = 'grid';
     } catch (e) {}
-  } else if (msg.t === 'leaderboard_update') {
-    state.matchLeaderboard = msg.leaderboard || [];
-    for (const entry of state.matchLeaderboard) {
-      if (String(entry.playerId) === String(state.player.id)) {
-        state.currentPlayerKills = entry.kills || 0;
-        break;
-      }
-    }
-  } else if (msg.t === 'welcome') {
+  }
+  
+  // --- CORE WELCOME ---
+  else if (msg.t === 'welcome') {
     if (VERBOSE_NETWORK) console.log('GOT welcome from server');
     if (msg.id) state.player.id = String(msg.id);
     if (msg.player) {
@@ -294,6 +286,7 @@ export function handleServerMessage(msg) {
         state.player.hp = Math.min(state.player.hp || state.player.maxHp, state.player.maxHp);
       }
     }
+    
     if (msg.mapType === 'square' || msg.mapSize || msg.mapHalf || msg.mapRadius) {
       state.map.type = 'square';
       state.map.half = (msg.mapHalf || msg.mapRadius || (msg.mapSize ? msg.mapSize / 2 : state.map.half));
@@ -308,20 +301,24 @@ export function handleServerMessage(msg) {
       state.map.walls = Array.isArray(msg.walls) ? msg.walls : [];
       state.map._jaggedNeedsUpdate = true;
     }
-    if (typeof msg.spawnX === 'number' && typeof msg.spawnY === 'number') {
-      state.player.x = msg.spawnX; state.player.y = msg.spawnY;
-    }
-    if (VERBOSE_NETWORK) console.log('Server welcome. my id =', state.player.id, 'mapType=', state.map.type, 'mapHalf/mapRadius=', state.map.half || state.map.radius, 'tickRate=', msg.tickRate);
+    
+    if (VERBOSE_NETWORK) console.log('Server welcome. my id =', state.player.id);
     state.welcomeReceived = true;
-    setLoadingText('Welcome received — loading world…');
-
+    state.isLoading = false;
+    state.gameState = 'mode_select';
+    
+    if (state.dom.loadingScreen) state.dom.loadingScreen.style.display = 'none';
+    if (state.dom.titleScreen) state.dom.titleScreen.style.display = 'none';
+    
     try {
-      if (typeof state.applyEquipmentBonuses === 'function') state.applyEquipmentBonuses();
-      if (state.dom && typeof state.dom.updateAllSlotVisuals === 'function') state.dom.updateAllSlotVisuals();
-    } catch (e) {}
-
-    if (!state.sendInputInterval) state.sendInputInterval = setInterval(sendInputPacket, 50);
-  } else if (msg.t === 'snapshot') {
+      dom.showModeSelectScreen();
+    } catch (e) {
+      console.error('Error showing mode select screen:', e);
+    }
+  }
+  
+  // --- SNAPSHOT ---
+  else if (msg.t === 'snapshot') {
     const list = msg.players || [];
     const seen = new Set();
     for (const sp of list) {
@@ -332,12 +329,19 @@ export function handleServerMessage(msg) {
           continue;
         }
 
-        state.player.serverX = sp.x; state.player.serverY = sp.y;
-        const dx = state.player.serverX - state.player.x; const dy = state.player.serverY - state.player.y;
+        state.player.serverX = sp.x; 
+        state.player.serverY = sp.y;
+        const dx = state.player.serverX - state.player.x; 
+        const dy = state.player.serverY - state.player.y;
         const dist = Math.hypot(dx, dy);
-        if (dist > 140) { state.player.x = state.player.serverX; state.player.y = state.player.serverY; }
-        state.player.vx = sp.vx || state.player.vx; state.player.vy = sp.vy || state.player.vy;
-        state.player.color = sp.color || state.player.color; state.player.radius = sp.radius || state.player.radius;
+        if (dist > 140) { 
+          state.player.x = state.player.serverX; 
+          state.player.y = state.player.serverY; 
+        }
+        state.player.vx = sp.vx || state.player.vx; 
+        state.player.vy = sp.vy || state.player.vy;
+        state.player.color = sp.color || state.player.color; 
+        state.player.radius = sp.radius || state.player.radius;
         state.player.name = sp.name || state.player.name;
         if (typeof sp.level === 'number') state.player.level = sp.level;
         if (typeof sp.xp === 'number') state.player.xp = sp.xp;
@@ -380,7 +384,15 @@ export function handleServerMessage(msg) {
               start: Date.now(),
               duration: 1100
             });
-            state.remoteEffects.push({ type: 'aoe', x: state.player.x, y: state.player.y, radius: 24, color: 'rgba(255,80,80,0.9)', start: Date.now(), duration: 350 });
+            state.remoteEffects.push({ 
+              type: 'aoe', 
+              x: state.player.x, 
+              y: state.player.y, 
+              radius: 24, 
+              color: 'rgba(255,80,80,0.9)', 
+              start: Date.now(), 
+              duration: 350 
+            });
           }
           state.player.hp = newHp;
         }
@@ -393,14 +405,37 @@ export function handleServerMessage(msg) {
       } else {
         let rp = state.remotePlayers.get(id);
         if (!rp) {
-          rp = { id, name: sp.name, targetX: sp.x, targetY: sp.y, displayX: sp.x, displayY: sp.y, vx: sp.vx || 0, vy: sp.vy || 0, radius: sp.radius, color: sp.color || '#ff7', level: sp.level || 1, kills: sp.kills || 0 };
+          rp = { 
+            id, 
+            name: sp.name, 
+            targetX: sp.x, 
+            targetY: sp.y, 
+            displayX: sp.x, 
+            displayY: sp.y, 
+            vx: sp.vx || 0, 
+            vy: sp.vy || 0, 
+            radius: sp.radius, 
+            color: sp.color || '#ff7', 
+            level: sp.level || 1, 
+            kills: sp.kills || 0 
+          };
           state.remotePlayers.set(id, rp);
         } else {
-          rp.name = sp.name || rp.name; rp.targetX = sp.x; rp.targetY = sp.y; rp.vx = sp.vx || rp.vx; rp.vy = sp.vy || rp.vy; rp.radius = sp.radius || rp.radius; rp.color = sp.color || rp.color; rp.level = sp.level || rp.level; rp.kills = sp.kills || 0;
+          rp.name = sp.name || rp.name; 
+          rp.targetX = sp.x; 
+          rp.targetY = sp.y; 
+          rp.vx = sp.vx || rp.vx; 
+          rp.vy = sp.vy || rp.vy; 
+          rp.radius = sp.radius || rp.radius; 
+          rp.color = sp.color || rp.color; 
+          rp.level = sp.level || rp.level; 
+          rp.kills = sp.kills || 0;
         }
       }
     }
-    for (const key of Array.from(state.remotePlayers.keys())) { if (!seen.has(key)) state.remotePlayers.delete(key); }
+    for (const key of Array.from(state.remotePlayers.keys())) { 
+      if (!seen.has(key)) state.remotePlayers.delete(key); 
+    }
 
     const mobList = msg.mobs || [];
     const seenMobs = new Set();
@@ -412,9 +447,12 @@ export function handleServerMessage(msg) {
         rm = {
           id,
           type: m.type || 'mob',
-          targetX: m.x, targetY: m.y,
-          displayX: m.x, displayY: m.y,
-          vx: m.vx || 0, vy: m.vy || 0,
+          targetX: m.x, 
+          targetY: m.y,
+          displayX: m.x, 
+          displayY: m.y,
+          vx: m.vx || 0, 
+          vy: m.vy || 0,
           hp: (typeof m.hp === 'number') ? m.hp : (m.maxHp || 0),
           maxHp: m.maxHp || m.hp || 100,
           radius: m.radius || 18,
@@ -470,9 +508,12 @@ export function handleServerMessage(msg) {
         rp = {
           id,
           type: p.type || 'proj',
-          targetX: p.x, targetY: p.y,
-          displayX: p.x, displayY: p.y,
-          vx: p.vx || 0, vy: p.vy || 0,
+          targetX: p.x, 
+          targetY: p.y,
+          displayX: p.x, 
+          displayY: p.y,
+          vx: p.vx || 0, 
+          vy: p.vy || 0,
           radius: p.radius || 6,
           owner: p.owner || null,
           alpha: 1.0
@@ -522,7 +563,10 @@ export function handleServerMessage(msg) {
         else if (state.dom && state.dom.inventoryContainer) state.dom.inventoryContainer.style.display = 'grid';
       } catch (e) {}
     }
-  } else if (msg.t === 'chat') {
+  }
+  
+  // --- CHAT ---
+  else if (msg.t === 'chat') {
     const name = msg.name || '??';
     const text = msg.text || '';
     const ts = msg.ts || Date.now();
@@ -538,12 +582,15 @@ export function handleServerMessage(msg) {
     } else {
       appendChatMessage({ name, text, ts, chatId });
     }
-  } else if (msg.t === 'chat_blocked') {
+  } 
+  else if (msg.t === 'chat_blocked') {
     const reason = msg.reason || 'rate_limit';
     appendChatMessage({ text: `Chat blocked: ${reason}`, ts: Date.now(), system: true });
-  } else if (msg.t === 'player_levelup') {
+  } 
+  else if (msg.t === 'player_levelup') {
     appendChatMessage({ text: `${msg.playerName || 'Player'} leveled up to ${msg.level}! (+${msg.hpGain} HP)`, ts: Date.now(), system: true });
-  } else if (msg.t === 'mob_died') {
+  } 
+  else if (msg.t === 'mob_died') {
     const mid = msg.mobId;
     const killerId = msg.killerId;
     const xp = msg.xp || 0;
@@ -557,17 +604,42 @@ export function handleServerMessage(msg) {
     }
     if (String(killerId) === String(state.player.id) && xp > 0) {
       state.player.xp = (state.player.xp || 0) + xp;
-      state.remoteEffects.push({ type: 'xp', x: state.player.x, y: state.player.y - (state.player.radius + 8), color: 'rgba(180,220,255,1)', start: Date.now(), duration: 1200, text: `+${xp} XP` });
+      state.remoteEffects.push({ 
+        type: 'xp', 
+        x: state.player.x, 
+        y: state.player.y - (state.player.radius + 8), 
+        color: 'rgba(180,220,255,1)', 
+        start: Date.now(), 
+        duration: 1200, 
+        text: `+${xp} XP` 
+      });
     } else {
       if (mid && state.remoteMobs.has(mid)) {
         const rm = state.remoteMobs.get(mid);
-        state.remoteEffects.push({ type: 'aoe', x: rm.targetX || rm.displayX, y: rm.targetY || rm.displayY, radius: 28, color: 'rgba(200,200,200,0.9)', start: Date.now(), duration: 700 });
+        state.remoteEffects.push({ 
+          type: 'aoe', 
+          x: rm.targetX || rm.displayX, 
+          y: rm.targetY || rm.displayY, 
+          radius: 28, 
+          color: 'rgba(200,200,200,0.9)', 
+          start: Date.now(), 
+          duration: 700 
+        });
       }
     }
-  } else if (msg.t === 'cast_effect') {
+  } 
+  else if (msg.t === 'cast_effect') {
     const skill = msg.skill || msg.type || '';
     if (msg.type === 'melee' || msg.skill === 'slash') {
-      const ef = { type: 'melee', x: msg.x || state.player.x, y: msg.y || state.player.y, radius: msg.range || 48, color: 'rgba(255,180,120,0.95)', start: Date.now(), duration: 300 };
+      const ef = { 
+        type: 'melee', 
+        x: msg.x || state.player.x, 
+        y: msg.y || state.player.y, 
+        radius: msg.range || 48, 
+        color: 'rgba(255,180,120,0.95)', 
+        start: Date.now(), 
+        duration: 300 
+      };
       state.remoteEffects.push(ef);
     } else if (msg.type === 'aoe' || msg.skill) {
       let color = 'rgba(255,255,255,0.9)';
@@ -596,7 +668,8 @@ export function handleServerMessage(msg) {
         state.player.localBuffs.push({ type: b.type, multiplier: b.multiplier || 1, until: Date.now() + (b.durationMs || 0) });
       }
     }
-  } else if (msg.t === 'stun') {
+  } 
+  else if (msg.t === 'stun') {
     const id = msg.id;
     const kind = msg.kind;
     const until = msg.until || 0;
@@ -610,7 +683,8 @@ export function handleServerMessage(msg) {
       const rp = state.remotePlayers.get(id);
       if (rp) rp.stunnedUntil = until;
     }
-  } else if (msg.t === 'player_hurt') {
+  } 
+  else if (msg.t === 'player_hurt') {
     const id = msg.id;
     const dmg = msg.damage || 0;
     if (String(id) === String(state.player.id)) {
@@ -627,7 +701,15 @@ export function handleServerMessage(msg) {
           duration: 1100
         });
       } else {
-        state.remoteEffects.push({ type: 'aoe', x: state.player.x, y: state.player.y - (state.player.radius + 6), radius: 24, color: 'rgba(255,80,80,0.9)', start: Date.now(), duration: 350 });
+        state.remoteEffects.push({ 
+          type: 'aoe', 
+          x: state.player.x, 
+          y: state.player.y - (state.player.radius + 6), 
+          radius: 24, 
+          color: 'rgba(255,80,80,0.9)', 
+          start: Date.now(), 
+          duration: 350 
+        });
       }
       if (typeof msg.hp === 'number') state.player.hp = msg.hp;
     } else {
@@ -643,10 +725,19 @@ export function handleServerMessage(msg) {
           duration: 1100
         });
       } else {
-        state.remoteEffects.push({ type: 'damage', x: state.player.x, y: state.player.y - (state.player.radius + 6), color: 'rgba(255,80,80,0.95)', text: `${Math.round(dmg)}`, start: Date.now(), duration: 1100 });
+        state.remoteEffects.push({ 
+          type: 'damage', 
+          x: state.player.x, 
+          y: state.player.y - (state.player.radius + 6), 
+          color: 'rgba(255,80,80,0.95)', 
+          text: `${Math.round(dmg)}`, 
+          start: Date.now(), 
+          duration: 1100 
+        });
       }
     }
-  } else if (msg.t === 'player_healed') {
+  } 
+  else if (msg.t === 'player_healed') {
     const pid = msg.id;
     const amount = msg.amount || 0;
     if (String(pid) === String(state.player.id)) {
@@ -678,7 +769,8 @@ export function handleServerMessage(msg) {
         });
       }
     }
-  } else if (msg.t === 'cast_rejected') {
+  } 
+  else if (msg.t === 'cast_rejected') {
     const reason = msg.reason || 'rejected';
     dom.showTransientMessage(`Cast rejected: ${reason}`, 1500);
 
@@ -702,7 +794,8 @@ export function handleServerMessage(msg) {
         }
       }
     }
-  } else if (msg.t === 'player_died') {
+  } 
+  else if (msg.t === 'player_died') {
     const pid = msg.id || null;
     if (String(pid) === String(state.player.id)) {
       state.player.awaitingRespawn = true;
@@ -718,7 +811,6 @@ export function handleServerMessage(msg) {
   }
 }
 
-// Chat send helper (client-side)
 export function sendChat() {
   if (!state.dom.chatInput || !state.dom.chatInput.value) return;
   const txt = state.dom.chatInput.value.trim();

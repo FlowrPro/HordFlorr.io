@@ -18,10 +18,10 @@ function makeKey(type) { return String(type || '').toLowerCase(); }
 // If manifest omitted, preloads the default types.
 export function preloadMobSprites(manifest = null) {
   const defaults = [
-  { type: 'goblin', src: 'assets/mobs/goblin.png' },
-  { type: 'wolf',   src: 'assets/mobs/wolf.png' },
-  { type: 'golem',  src: 'assets/mobs/golem.png' }
-];
+    { type: 'goblin', src: 'assets/mobs/goblin.png' },
+    { type: 'wolf',   src: 'assets/mobs/wolf.png' },
+    { type: 'golem',  src: 'assets/mobs/golem.png' }
+  ];
   const list = Array.isArray(manifest) && manifest.length ? manifest : defaults;
   const promises = [];
   for (const it of list) {

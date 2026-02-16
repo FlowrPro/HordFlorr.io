@@ -159,6 +159,7 @@ export const state = (function(){
   let matchCountdownMs = 0;
   let matchTimeRemainingMs = 0;
   let matchStartTime = null;
+  let matchCountdownStartedAt = null;
   let matchLeaderboard = [];
   let currentPlayerKills = 0;
   let queuePlayers = [];
@@ -266,6 +267,7 @@ export const state = (function(){
     matchCountdownMs,
     matchTimeRemainingMs,
     matchStartTime,
+    matchCountdownStartedAt,
     matchLeaderboard,
     currentPlayerKills,
     queuePlayers,

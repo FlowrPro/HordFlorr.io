@@ -1,5 +1,4 @@
 // Entry point: wires modules, initializes DOM, input, network and rendering loop.
-// All original behavior preserved.
 
 import dom, { loadSettings, saveSettings, setLoadingText, cleanupAfterFailedLoad, appendChatMessage } from './dom.js';
 import { state } from './state.js';
@@ -9,11 +8,9 @@ import * as input from './input.js';
 import * as render from './render.js';
 import { preloadIcons } from './icons.js';
 
-// Attach canvas/context to local variables for ease of use
 const canvas = state.dom.canvas;
 const ctx = state.dom.ctx;
 
-// Initialize settings
 loadSettings();
 if (state.dom.mouseMovementCheckbox) state.dom.mouseMovementCheckbox.checked = state.settings.mouseMovement;
 if (state.dom.keyboardMovementCheckbox) state.dom.keyboardMovementCheckbox.checked = state.settings.keyboardMovement;
@@ -21,11 +18,6 @@ if (state.dom.clickMovementCheckbox) state.dom.clickMovementCheckbox.checked = s
 if (state.dom.graphicsQuality) state.dom.graphicsQuality.value = state.settings.graphicsQuality;
 if (state.dom.showCoordinatesCheckbox) state.dom.showCoordinatesCheckbox.checked = state.settings.showCoordinates;
 
-function saveSettingsWrapper() {
-  saveSettings();
-}
-
-// Preload skill icons (non-blocking)
 try {
   const iconManifest = [];
   for (const cls in state.SKILL_META) {
@@ -35,7 +27,6 @@ try {
   preloadIcons(iconManifest).catch(() => {});
 } catch (e) {}
 
-// --- Title / login / settings UI wiring ---
 const savedName = localStorage.getItem('moborr_username');
 if (savedName && state.dom.usernameInput) state.dom.usernameInput.value = savedName;
 
@@ -69,57 +60,53 @@ export function startGame() {
   }, 12000);
 }
 
-// Mode selection flow
 export function selectMode(mode) {
   state.gameMode = mode;
   state.gameState = 'queue';
   
+  dom.hideModeSelectScreen();
+  dom.showQueueScreen();
+  
   if (state.ws && state.ws.readyState === WebSocket.OPEN) {
     try {
       state.ws.send(JSON.stringify({ t: 'join_queue', mode: mode }));
-    } catch (e) {}
+      console.log('Sent join_queue for mode:', mode);
+    } catch (e) {
+      console.error('Failed to send join_queue:', e);
+    }
   }
-  
-  dom.showQueueScreen();
 }
 
-// Wire play button and username enter to startGame
 if (state.dom.playButton) state.dom.playButton.addEventListener('click', startGame);
 if (state.dom.usernameInput) state.dom.usernameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); startGame(); }
 });
 
-// Wire FFA button
 if (document.getElementById('ffaButton')) {
   document.getElementById('ffaButton').addEventListener('click', () => {
+    console.log('FFA button clicked');
     selectMode('ffa');
   });
 }
 
-// Wire cancel queue button
 if (document.getElementById('cancelQueueBtn')) {
   document.getElementById('cancelQueueBtn').addEventListener('click', () => {
+    console.log('Cancel queue clicked');
     state.gameState = 'mode_select';
-    state.gameMode = null;
+    dom.hideQueueScreen();
+    dom.showModeSelectScreen();
+    
     if (state.ws && state.ws.readyState === WebSocket.OPEN) {
       try {
         state.ws.send(JSON.stringify({ t: 'cancel_queue' }));
       } catch (e) {}
     }
-    dom.showModeSelectScreen();
   });
 }
 
-// After successful login (after first snapshot), show mode select instead of jumping to game
-// This is handled in network.js now - showModeSelectScreen is called after authenticated
-
-// Initialize input handlers and expose computeInputVector to network
 input.initInputHandlers();
-
-// Start the render loop
 render.startLoop();
 
-// Expose for debugging and compatibility with existing code
 window.moborr = {
   startGame,
   selectMode,

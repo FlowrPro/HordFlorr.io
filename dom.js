@@ -333,7 +333,7 @@ const modeSelectScreen = document.createElement('div');
 modeSelectScreen.id = 'modeSelectScreen';
 modeSelectScreen.style.position = 'fixed';
 modeSelectScreen.style.inset = '0';
-modeSelectScreen.style.display = 'none';
+modeSelectScreen.style.display = 'none';  // START HIDDEN
 modeSelectScreen.style.zIndex = '100';
 modeSelectScreen.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
 modeSelectScreen.style.alignItems = 'center';
@@ -386,16 +386,19 @@ document.body.appendChild(modeSelectScreen);
 
 export function showModeSelectScreen() {
   if (modeSelectScreen) {
+    console.log('📺 Showing mode select screen');
     modeSelectScreen.style.display = 'flex';
+    modeSelectScreen.style.visibility = 'visible';
   }
 }
 
 export function hideModeSelectScreen() {
   if (modeSelectScreen) {
+    console.log('📺 Hiding mode select screen');
     modeSelectScreen.style.display = 'none';
+    modeSelectScreen.style.visibility = 'hidden';
   }
 }
-
 // --- QUEUE SCREEN ---
 const queueScreen = document.createElement('div');
 queueScreen.id = 'queueScreen';

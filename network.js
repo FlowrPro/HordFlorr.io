@@ -2,12 +2,12 @@
 // All logic preserved from original main.js; adapted to use the shared state and dom helpers.
 
 import { state } from './state.js';
-import dom, { appendChatMessage, setLoadingText, cleanupAfterFailedLoad, showDeathOverlay, showReconnectOverlay, hideReconnectOverlay, setReconnectCancelCallback } from './dom.js';
+import dom, { appendChatMessage, setLoadingText, cleanupAfterFailedLoad, showDeathOverlay, showReconnectOverlay, hideReconnectOverlay, setReconnectCancelCallback, showTransientMessage } from './dom.js';
 
 // Set to true to re-enable the verbose WS logs (useful for debugging)
 const VERBOSE_NETWORK = false;
 
-let ws = null; // will mirror state.ws
+let ws = null;
 let sendInputInterval = null;
 let seq = 0;
 
@@ -21,12 +21,7 @@ const RECONNECT_BASE = 1000;
 const RECONNECT_MULT = 2;
 const RECONNECT_MAX = 30000;
 
-// loading/connection lifecycle state mirrors state fields
-// state.isLoading, state.loadingTimeout, state.welcomeReceived, state.gotFirstSnapshot
-
 export function connectToServer() {
-  // If a reconnect attempt is in progress and user intentionally requested connect,
-  // clear pending reconnect state so we don't race timers.
   stopReconnect();
 
   if (!state.SERVER_URL) {
@@ -45,7 +40,6 @@ export function connectToServer() {
     console.warn('Failed to create WebSocket', err);
     setLoadingText('Connection failed (exception creating WebSocket)');
     cleanupAfterFailedLoad('ws_create_exception');
-    // start reconnect attempts if appropriate
     startReconnect();
     return;
   }
@@ -53,7 +47,6 @@ export function connectToServer() {
 
   ws.addEventListener('open', () => {
     if (VERBOSE_NETWORK) console.log('WS OPEN');
-    // Cancel any reconnect UI/timers when we successfully open
     stopReconnect();
 
     setLoadingText('Connected — joining…');
@@ -95,18 +88,14 @@ export function connectToServer() {
     }
     if (state.dom.chatInput) state.dom.chatInput.disabled = true;
     if (state.dom.chatPanel) state.dom.chatPanel.style.display = 'none';
-    // Ensure we clear the interval stored on state to avoid leaking intervals after disconnect
     if (state.sendInputInterval) { clearInterval(state.sendInputInterval); state.sendInputInterval = null; }
     state.ws = null;
     ws = null;
-    // clear local handle as well if present
     if (sendInputInterval) { clearInterval(sendInputInterval); sendInputInterval = null; }
 
-    // Start auto-reconnect unless the user cancelled it
     if (!reconnectCancelled) {
       startReconnect();
     } else {
-      // If reconnect was cancelled by user, ensure UI is hidden
       hideReconnectOverlay();
     }
   });
@@ -119,7 +108,6 @@ export function connectToServer() {
     } else {
       setLoadingText('Connection error');
     }
-    // Do not immediately start reconnect here; wait for close event for consistent flow
   });
 }
 
@@ -127,11 +115,10 @@ export function sendInputPacket() {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
   // Only send input after we've received the welcome — this prevents "need_join" spam
   if (!state.welcomeReceived) return;
-  const input = computeInputVector(); // computeInputVector is referenced from input.js; to avoid circular imports, we'll call it via state.dom later (main will set state.inputCompute)
+  const input = computeInputVector();
   try { state.ws.send(JSON.stringify({ t: 'input', seq: ++seq, input })); } catch (e) {}
 }
 
-// We'll import computeInputVector dynamically via a setter to avoid circular import
 export function setComputeInputFunc(fn) {
   state.computeInputVector = fn;
 }
@@ -141,38 +128,31 @@ function computeInputVector() {
 
 // Auto-reconnect implementation ------------------------------------------------
 function startReconnect() {
-  // if already connecting or cancelled, no-op
   if (reconnectTimer || reconnectCancelled) return;
   reconnectAttempts = Math.max(1, reconnectAttempts + 1);
   const delay = Math.min(RECONNECT_BASE * Math.pow(RECONNECT_MULT, reconnectAttempts - 1), RECONNECT_MAX);
   nextReconnectDelay = delay;
 
-  // show UI and countdown
   let remaining = Math.ceil(delay / 1000);
   const attemptNumber = reconnectAttempts;
   showReconnectOverlay(`Disconnected — attempting to reconnect in ${remaining}s (attempt ${attemptNumber})`);
-  // update message every second
   reconnectCountdownTimer = setInterval(() => {
     remaining = Math.max(0, remaining - 1);
     showReconnectOverlay(`Disconnected — attempting to reconnect in ${remaining}s (attempt ${attemptNumber})`);
   }, 1000);
 
   reconnectTimer = setTimeout(() => {
-    // clear countdown
     if (reconnectCountdownTimer) { clearInterval(reconnectCountdownTimer); reconnectCountdownTimer = null; }
     reconnectTimer = null;
     if (reconnectCancelled) {
       hideReconnectOverlay();
       return;
     }
-    // Try to connect. connectToServer will clear reconnect state on success.
     try {
       connectToServer();
     } catch (e) {
-      // If connectToServer throws synchronously, schedule next attempt
       startReconnect();
     }
-    // If connect attempt fails and triggers close, startReconnect will run again from close handler.
   }, delay);
 }
 
@@ -191,24 +171,53 @@ function cancelReconnect() {
   hideReconnectOverlay();
 }
 
-// Wire cancel callback into DOM so the "Cancel" button works
 try { setReconnectCancelCallback(cancelReconnect); } catch (e) {}
 
-// Handle server messages (logic preserved)
+// Handle server messages
 export function handleServerMessage(msg) {
   if (!msg || !msg.t) return;
-  if (msg.t === 'welcome') {
-    if (VERBOSE_NETWORK) console.log('GOT welcome from server');
+  
+  // --- MATCHMAKING MESSAGES ---
+  if (msg.t === 'queue_update') {
+    const queuePlayers = msg.players || [];
+    state.queuePlayers = queuePlayers.map(p => p.name);
+    const currentCount = queuePlayers.length;
+    const maxCount = 10;
+    dom.updateQueueDisplay(state.queuePlayers, currentCount, maxCount);
+  } else if (msg.t === 'match_created') {
+    state.matchId = msg.matchId;
+    state.matchCountdownMs = msg.countdownMs || 120000;
+    state.gameState = 'countdown';
+    dom.showCountdownScreen();
+  } else if (msg.t === 'match_countdown') {
+    const remaining = msg.remainingMs || 0;
+    const countdownPlayers = msg.players || [];
+    state.matchCountdownMs = remaining;
+    const currentCount = countdownPlayers.length;
+    const maxCount = 10;
+    dom.updateCountdownDisplay(remaining, countdownPlayers.map(p => p.name), currentCount, maxCount);
+    
+    if (remaining <= 0) {
+      state.gameState = 'in_game';
+    }
+  } else if (msg.t === 'match_cancelled') {
+    const reason = msg.reason || 'unknown';
+    const message = msg.message || 'Match was cancelled';
+    showTransientMessage(message, 2000);
+    state.gameState = 'mode_select';
+    state.matchId = null;
+    dom.showModeSelectScreen();
+  } else if (msg.t === 'match_start') {
+    state.gameState = 'in_game';
+    state.matchId = msg.matchId;
+    state.matchTimeRemainingMs = msg.matchDurationMs || 1800000;
+    dom.hideCountdownScreen();
     if (msg.id) state.player.id = String(msg.id);
     if (msg.player) {
       if (typeof msg.player.level === 'number') state.player.level = msg.player.level;
       if (typeof msg.player.xp === 'number') state.player.xp = msg.player.xp;
       if (msg.player.class) state.player.class = msg.player.class;
-      // If server supplies a base maxHp on welcome, treat it as the authoritative base
       if (typeof msg.player.maxHp === 'number') {
-        // Server sent authoritative maxHp (which already includes equipment bonuses).
-        // Compute client's local equipment HP bonus so we can recover the server's base value
-        // and avoid applying equipment twice.
         let equipBonus = 0;
         try {
           if (Array.isArray(state.equipment)) {
@@ -217,11 +226,8 @@ export function handleServerMessage(msg) {
             }
           }
         } catch (e) { equipBonus = 0; }
-        // Ensure base is at least 1
         state.player._baseMaxHp = Math.max(1, Math.round(Number(msg.player.maxHp) - equipBonus));
-        // Keep authoritative (server) maxHp as shown immediately
         state.player.maxHp = Number(msg.player.maxHp);
-        // ensure current HP isn't higher than max
         state.player.hp = Math.min(state.player.hp || state.player.maxHp, state.player.maxHp);
       }
     }
@@ -231,7 +237,69 @@ export function handleServerMessage(msg) {
       state.map.size = msg.mapSize || (state.map.half * 2);
       state.map.center = { x: 0, y: 0 };
       state.map.walls = Array.isArray(msg.walls) ? msg.walls : [];
-      // signal render to rebuild cached jagged walls
+      state.map._jaggedNeedsUpdate = true;
+    } else if (msg.mapType === 'circle' || msg.mapRadius) {
+      state.map.type = 'circle';
+      state.map.radius = (msg.mapRadius || msg.mapHalf || state.map.radius);
+      state.map.center = { x: 0, y: 0 };
+      state.map.walls = Array.isArray(msg.walls) ? msg.walls : [];
+      state.map._jaggedNeedsUpdate = true;
+    }
+    if (typeof msg.spawnX === 'number' && typeof msg.spawnY === 'number') {
+      state.player.x = msg.spawnX; state.player.y = msg.spawnY;
+    }
+    state.welcomeReceived = true;
+    setLoadingText('Welcome received — loading world…');
+
+    try {
+      if (typeof state.applyEquipmentBonuses === 'function') state.applyEquipmentBonuses();
+      if (state.dom && typeof state.dom.updateAllSlotVisuals === 'function') state.dom.updateAllSlotVisuals();
+    } catch (e) {}
+
+    if (!state.sendInputInterval) state.sendInputInterval = setInterval(sendInputPacket, 50);
+    if (state.dom.chatPanel) state.dom.chatPanel.style.display = 'flex';
+    if (state.dom.chatInput) state.dom.chatInput.disabled = false;
+    try { state.dom.canvas.focus(); } catch (e) {}
+
+    try {
+      if (state.dom && typeof state.dom.showInventory === 'function') state.dom.showInventory();
+      else if (state.dom && state.dom.inventoryContainer) state.dom.inventoryContainer.style.display = 'grid';
+    } catch (e) {}
+  } else if (msg.t === 'leaderboard_update') {
+    state.matchLeaderboard = msg.leaderboard || [];
+    for (const entry of state.matchLeaderboard) {
+      if (String(entry.playerId) === String(state.player.id)) {
+        state.currentPlayerKills = entry.kills || 0;
+        break;
+      }
+    }
+  } else if (msg.t === 'welcome') {
+    if (VERBOSE_NETWORK) console.log('GOT welcome from server');
+    if (msg.id) state.player.id = String(msg.id);
+    if (msg.player) {
+      if (typeof msg.player.level === 'number') state.player.level = msg.player.level;
+      if (typeof msg.player.xp === 'number') state.player.xp = msg.player.xp;
+      if (msg.player.class) state.player.class = msg.player.class;
+      if (typeof msg.player.maxHp === 'number') {
+        let equipBonus = 0;
+        try {
+          if (Array.isArray(state.equipment)) {
+            for (const it of state.equipment) {
+              if (it && it.stats && typeof it.stats.maxHp === 'number') equipBonus += Number(it.stats.maxHp);
+            }
+          }
+        } catch (e) { equipBonus = 0; }
+        state.player._baseMaxHp = Math.max(1, Math.round(Number(msg.player.maxHp) - equipBonus));
+        state.player.maxHp = Number(msg.player.maxHp);
+        state.player.hp = Math.min(state.player.hp || state.player.maxHp, state.player.maxHp);
+      }
+    }
+    if (msg.mapType === 'square' || msg.mapSize || msg.mapHalf || msg.mapRadius) {
+      state.map.type = 'square';
+      state.map.half = (msg.mapHalf || msg.mapRadius || (msg.mapSize ? msg.mapSize / 2 : state.map.half));
+      state.map.size = msg.mapSize || (state.map.half * 2);
+      state.map.center = { x: 0, y: 0 };
+      state.map.walls = Array.isArray(msg.walls) ? msg.walls : [];
       state.map._jaggedNeedsUpdate = true;
     } else if (msg.mapType === 'circle' || msg.mapRadius) {
       state.map.type = 'circle';
@@ -247,14 +315,11 @@ export function handleServerMessage(msg) {
     state.welcomeReceived = true;
     setLoadingText('Welcome received — loading world…');
 
-    // Re-apply equipment bonuses after welcome so client-side equipment modifies HP/speed etc.
     try {
       if (typeof state.applyEquipmentBonuses === 'function') state.applyEquipmentBonuses();
-      // refresh UI if available
       if (state.dom && typeof state.dom.updateAllSlotVisuals === 'function') state.dom.updateAllSlotVisuals();
     } catch (e) {}
 
-    // Start sending input only after welcome received to avoid flooding the server with input while unauthenticated.
     if (!state.sendInputInterval) state.sendInputInterval = setInterval(sendInputPacket, 50);
   } else if (msg.t === 'snapshot') {
     const list = msg.players || [];
@@ -263,10 +328,7 @@ export function handleServerMessage(msg) {
       const id = String(sp.id);
       seen.add(id);
       if (id === state.player.id) {
-        // If we're purposely awaiting a manual respawn, ignore snapshot updates for our local player so we
-        // don't immediately re-appear. The death UI controls when we allow snapshots to update the client.
         if (state.player && state.player.awaitingRespawn) {
-          // still mark as seen so remotePlayers cleanup works correctly
           continue;
         }
 
@@ -280,12 +342,9 @@ export function handleServerMessage(msg) {
         if (typeof sp.level === 'number') state.player.level = sp.level;
         if (typeof sp.xp === 'number') state.player.xp = sp.xp;
         if (typeof sp.nextLevelXp === 'number') state.player.nextLevelXp = sp.nextLevelXp;
+        if (typeof sp.kills === 'number') state.player.kills = sp.kills;
 
-        // If server provided a base maxHp in the snapshot, update our stored base so equipment bonuses use authoritative base.
         if (typeof sp.maxHp === 'number') {
-          // Server provided an authoritative maxHp (already includes equipment bonuses).
-          // Subtract locally-known equipment bonuses to recover the server's "base" maxHp
-          // and avoid double-applying equipment when applyEquipmentBonuses runs.
           let equipBonus = 0;
           try {
             if (Array.isArray(state.equipment)) {
@@ -295,16 +354,13 @@ export function handleServerMessage(msg) {
             }
           } catch (e) { equipBonus = 0; }
           state.player._baseMaxHp = Math.max(1, Math.round(Number(sp.maxHp) - equipBonus));
-          // set authoritative value for immediate UI consistency
           state.player.maxHp = Number(sp.maxHp);
         }
 
-        // Ensure local HP is updated from snapshot so UI can show correct values
         if (typeof sp.hp === 'number') {
           const prevHp = Number.isFinite(state.player.hp) ? state.player.hp : 0;
           const newHp = sp.hp;
           if (newHp > prevHp) {
-            // show heal UI
             state.remoteEffects.push({
               type: 'heal',
               x: state.player.x,
@@ -315,7 +371,6 @@ export function handleServerMessage(msg) {
               duration: 1200
             });
           } else if (newHp < prevHp) {
-            // show damage number (from authoritative snapshot)
             state.remoteEffects.push({
               type: 'damage',
               x: state.player.x,
@@ -330,7 +385,6 @@ export function handleServerMessage(msg) {
           state.player.hp = newHp;
         }
 
-        // Re-apply equipment bonuses after applying the server snapshot so equipment modifies the displayed maxHp/hp.
         try {
           if (typeof state.applyEquipmentBonuses === 'function') state.applyEquipmentBonuses();
           if (state.dom && typeof state.dom.updateAllSlotVisuals === 'function') state.dom.updateAllSlotVisuals();
@@ -339,16 +393,15 @@ export function handleServerMessage(msg) {
       } else {
         let rp = state.remotePlayers.get(id);
         if (!rp) {
-          rp = { id, name: sp.name, targetX: sp.x, targetY: sp.y, displayX: sp.x, displayY: sp.y, vx: sp.vx || 0, vy: sp.vy || 0, radius: sp.radius, color: sp.color || '#ff7', level: sp.level || 1 };
+          rp = { id, name: sp.name, targetX: sp.x, targetY: sp.y, displayX: sp.x, displayY: sp.y, vx: sp.vx || 0, vy: sp.vy || 0, radius: sp.radius, color: sp.color || '#ff7', level: sp.level || 1, kills: sp.kills || 0 };
           state.remotePlayers.set(id, rp);
         } else {
-          rp.name = sp.name || rp.name; rp.targetX = sp.x; rp.targetY = sp.y; rp.vx = sp.vx || rp.vx; rp.vy = sp.vy || rp.vy; rp.radius = sp.radius || rp.radius; rp.color = sp.color || rp.color; rp.level = sp.level || rp.level;
+          rp.name = sp.name || rp.name; rp.targetX = sp.x; rp.targetY = sp.y; rp.vx = sp.vx || rp.vx; rp.vy = sp.vy || rp.vy; rp.radius = sp.radius || rp.radius; rp.color = sp.color || rp.color; rp.level = sp.level || rp.level; rp.kills = sp.kills || 0;
         }
       }
     }
     for (const key of Array.from(state.remotePlayers.keys())) { if (!seen.has(key)) state.remotePlayers.delete(key); }
 
-    // --- Mob handling: process msg.mobs (if present) ---
     const mobList = msg.mobs || [];
     const seenMobs = new Set();
     for (const m of mobList) {
@@ -366,7 +419,7 @@ export function handleServerMessage(msg) {
           maxHp: m.maxHp || m.hp || 100,
           radius: m.radius || 18,
           color: '#9c9c9c',
-          alpha: 0.0, // spawn fade
+          alpha: 0.0,
           dead: (m.hp <= 0),
           stunnedUntil: m.stunnedUntil || 0
         };
@@ -407,7 +460,6 @@ export function handleServerMessage(msg) {
       }
     }
 
-    // --- Projectiles handling: process msg.projectiles (if present) ---
     const projList = msg.projectiles || [];
     const seenProjs = new Set();
     for (const p of projList) {
@@ -442,11 +494,13 @@ export function handleServerMessage(msg) {
       }
     }
 
-    // Update map.walls if server included walls in snapshot (keep latest)
     if (Array.isArray(msg.walls)) {
       state.map.walls = msg.walls;
-      // signal render to rebuild cached jagged walls
       state.map._jaggedNeedsUpdate = true;
+    }
+
+    if (Array.isArray(msg.leaderboard)) {
+      state.matchLeaderboard = msg.leaderboard;
     }
 
     if (!state.gotFirstSnapshot) {
@@ -463,7 +517,6 @@ export function handleServerMessage(msg) {
       if (state.dom.chatInput) state.dom.chatInput.disabled = false;
       try { state.dom.canvas.focus(); } catch (e) {}
 
-      // Show inventory now that the world is ready (inventory was hidden until first snapshot)
       try {
         if (state.dom && typeof state.dom.showInventory === 'function') state.dom.showInventory();
         else if (state.dom && state.dom.inventoryContainer) state.dom.inventoryContainer.style.display = 'grid';
@@ -491,7 +544,6 @@ export function handleServerMessage(msg) {
   } else if (msg.t === 'player_levelup') {
     appendChatMessage({ text: `${msg.playerName || 'Player'} leveled up to ${msg.level}! (+${msg.hpGain} HP)`, ts: Date.now(), system: true });
   } else if (msg.t === 'mob_died') {
-    // Show immediate death visuals and award XP locally (server authoritative).
     const mid = msg.mobId;
     const killerId = msg.killerId;
     const xp = msg.xp || 0;
@@ -500,7 +552,7 @@ export function handleServerMessage(msg) {
       if (rm) {
         rm.dead = true;
         rm.hp = 0;
-        rm.alpha = 1.0; // ensure visible so fade-out can run
+        rm.alpha = 1.0;
       }
     }
     if (String(killerId) === String(state.player.id) && xp > 0) {
@@ -531,7 +583,7 @@ export function handleServerMessage(msg) {
         radius: msg.radius || (msg.explodeRadius || 60),
         color,
         start: Date.now(),
-        duration: 900 // ms default
+        duration: 900
       };
       if (skill === 'frostnova') ef.duration = 1100;
       if (skill === 'rage') ef.duration = 1200;
@@ -632,7 +684,7 @@ export function handleServerMessage(msg) {
 
     if (typeof msg.slot === 'number') {
       const slot = Number(msg.slot) - 1;
-      const shouldClear = (reason === 'no_target' || reason === 'invalid_target' || reason === 'invalid_target' || reason === 'no_target');
+      const shouldClear = (reason === 'no_target' || reason === 'invalid_target');
       if (shouldClear && slot >= 0 && slot < state.cooldowns.length) {
         state.cooldowns[slot] = 0;
         const now = Date.now();
@@ -686,16 +738,13 @@ export function sendChat() {
   dom.unfocusChat();
 }
 
-// Expose a function to set the interval externally (used by main wiring)
 export function setSendInputIntervalHandle(handle) {
   state.sendInputInterval = handle;
 }
 
-// Provide setter for ws (for tests or future use)
 export function getWs() { return state.ws; }
 export function setWs(w) { state.ws = w; ws = w; }
 
-// Cleanup exported for external control
 export function cancelReconnectAndHideUI() {
   cancelReconnect();
   hideReconnectOverlay();

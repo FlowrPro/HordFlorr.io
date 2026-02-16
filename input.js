@@ -7,15 +7,11 @@ import { clampToMap } from './utils.js';
 import { sendChat } from './network.js';
 import { setComputeInputFunc } from './network.js';
 
-// NOTE: removed import './cast_stub.js' (file didn't exist) and removed duplicate export list
-// The castSkill implementation below uses state.ws directly to send cast messages to server.
-
 export function initInputHandlers() {
   // Setup keyboard events (preserve original)
   window.addEventListener('keydown', (e) => {
     if (state.dom.titleScreen && state.dom.titleScreen.style.display !== 'none') {
       if (e.key === 'Enter') { e.preventDefault(); 
-        // trigger play button click (startGame is defined in main.js and wired to play button)
         if (state.dom.playButton) state.dom.playButton.click();
       }
       return;
@@ -43,9 +39,7 @@ export function initInputHandlers() {
     const vw = state.dom.canvas.width / (window.devicePixelRatio || 1);
     const vh = state.dom.canvas.height / (window.devicePixelRatio || 1);
     state.pointer.x = e.clientX; state.pointer.y = e.clientY;
-    // guard: if player is awaiting respawn, don't update mouseWorld (avoid NaN issues)
     if (state.player && state.player.awaitingRespawn) {
-      // still update pointer so UI tooltips can work, but mouseWorld remains the last known or zero
       try {
         // keep previous mouseWorld if present
       } catch (e) {}
@@ -139,7 +133,7 @@ export function handleHotbarClick(clientX, clientY, vw, vh) {
   const gap = 10;
   const totalW = state.HOTBAR_SLOTS * slotSize + (state.HOTBAR_SLOTS - 1) * gap;
   const x0 = Math.round((vw - totalW) / 2);
-  const y0 = Math.round(vh - 28 - slotSize); // matches draw placement
+  const y0 = Math.round(vh - 28 - slotSize);
   if (clientY < y0 || clientY > y0 + slotSize) return false;
   for (let i = 0; i < state.HOTBAR_SLOTS; i++) {
     const sx = x0 + i * (slotSize + gap);
@@ -229,7 +223,6 @@ export function castSkill(slotIndex) {
   }
 
   if (state.cooldowns[slotIndex] > 0) {
-    // show transient message instead of chat
     const name = (state.CLASS_SKILLS[state.player.class] && state.CLASS_SKILLS[state.player.class][slotIndex]) || `Slot ${slotIndex+1}`;
     dom.showTransientMessage(`${name} is on cooldown (${Math.ceil(state.cooldowns[slotIndex])}s)`, 1400);
     return false;

@@ -1,6 +1,6 @@
 // Entry point: wires modules, initializes DOM, input, network and rendering loop.
 
-import dom, { loadSettings, saveSettings, setLoadingText, cleanupAfterFailedLoad, appendChatMessage } from './dom.js';
+import dom, { loadSettings, saveSettings, setLoadingText, cleanupAfterFailedLoad, appendChatMessage, showTransientMessage } from './dom.js';
 import { state } from './state.js';
 import * as utils from './utils.js';
 import * as network from './network.js';
@@ -62,23 +62,37 @@ export function startGame() {
 
 export function selectMode(mode) {
   console.log('selectMode called with:', mode);
+  console.log('Current state.ws:', state.ws);
+  console.log('Current state.ws.readyState:', state.ws ? state.ws.readyState : 'null');
+  console.log('WebSocket.OPEN value:', WebSocket.OPEN);
+  
   state.gameMode = mode;
   state.gameState = 'queue';
   
+  console.log('Hiding mode select screen...');
   dom.hideModeSelectScreen();
+  
+  console.log('Showing queue screen...');
   dom.showQueueScreen();
+  
+  showTransientMessage(`Joining ${mode} queue...`, 2000);
   
   if (state.ws && state.ws.readyState === WebSocket.OPEN) {
     try {
-      state.ws.send(JSON.stringify({ t: 'join_queue', mode: mode }));
-      console.log('Sent join_queue for mode:', mode);
+      const msg = JSON.stringify({ t: 'join_queue', mode: mode });
+      console.log('Sending join_queue message:', msg);
+      state.ws.send(msg);
+      console.log('Successfully sent join_queue for mode:', mode);
     } catch (e) {
       console.error('Failed to send join_queue:', e);
-      dom.showTransientMessage('Failed to join queue', 1500);
+      showTransientMessage('Failed to join queue: ' + e.message, 2000);
     }
   } else {
-    console.error('WebSocket not open, state:', state.ws ? state.ws.readyState : 'no ws');
-    dom.showTransientMessage('Not connected to server', 1500);
+    console.error('WebSocket not ready!');
+    console.error('  - state.ws exists:', !!state.ws);
+    console.error('  - state.ws.readyState:', state.ws ? state.ws.readyState : 'N/A');
+    console.error('  - WebSocket.OPEN:', WebSocket.OPEN);
+    showTransientMessage('Not connected to server. Try again.', 2000);
   }
 }
 
@@ -99,18 +113,19 @@ if (state.dom.usernameInput) {
   console.log('Wired username input');
 }
 
-// Wire up FFA button - this is CRITICAL
+// Wire up FFA button - CRITICAL
 function wireUpFfaButton() {
   const ffaBtn = document.getElementById('ffaButton');
   if (ffaBtn) {
     console.log('Found FFA button, wiring click handler');
     ffaBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      console.log('FFA button clicked');
+      e.stopPropagation();
+      console.log('=== FFA BUTTON CLICKED ===');
       selectMode('ffa');
     });
   } else {
-    console.warn('FFA button not found in DOM yet');
+    console.warn('FFA button not found');
   }
 }
 
@@ -121,6 +136,7 @@ function wireUpCancelQueueButton() {
     console.log('Found cancel queue button, wiring click handler');
     cancelBtn.addEventListener('click', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       console.log('Cancel queue button clicked');
       state.gameState = 'mode_select';
       dom.hideQueueScreen();
@@ -133,15 +149,15 @@ function wireUpCancelQueueButton() {
       }
     });
   } else {
-    console.warn('Cancel queue button not found in DOM yet');
+    console.warn('Cancel queue button not found');
   }
 }
 
-// Call these immediately since the buttons are created in dom.js
+// Call these immediately
 wireUpFfaButton();
 wireUpCancelQueueButton();
 
-// Also set up event listeners for if buttons get re-added (shouldn't happen but just in case)
+// Also try on DOM content loaded
 document.addEventListener('DOMContentLoaded', () => {
   wireUpFfaButton();
   wireUpCancelQueueButton();
@@ -153,7 +169,7 @@ input.initInputHandlers();
 // Start render loop
 render.startLoop();
 
-// Expose for debugging and compatibility
+// Expose for debugging
 window.moborr = {
   startGame,
   selectMode,

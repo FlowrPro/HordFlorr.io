@@ -545,6 +545,7 @@ gearPanel.style.zIndex = '10006';
 gearPanel.style.display = 'none';
 gearPanel.style.pointerEvents = 'auto';
 gearPanel.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+gearPanel.style.position = 'relative';
 
 const gearTitleRow = document.createElement('div');
 gearTitleRow.style.display = 'flex';
@@ -586,7 +587,6 @@ statsBox.style.display = 'flex';
 statsBox.style.flexDirection = 'column';
 statsBox.style.gap = '6px';
 statsBox.style.fontSize = '13px';
-gearPanel.appendChild(statsBox);
 
 function updateStatsBox() {
   statsBox.innerHTML = '';
@@ -633,7 +633,6 @@ overlayText.style.textAlign = 'center';
 overlayText.style.textShadow = '0 2px 8px rgba(0,0,0,0.8)';
 
 gearOverlay.appendChild(overlayText);
-gearPanel.style.position = 'relative';
 gearPanel.appendChild(gearOverlay);
 
 document.body.appendChild(gearPanel);

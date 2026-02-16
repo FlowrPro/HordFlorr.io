@@ -61,11 +61,26 @@ export function startGame() {
 }
 
 export function selectMode(mode) {
-  console.log('selectMode called with:', mode);
-  console.log('Current state.ws:', state.ws);
-  console.log('Current state.ws.readyState:', state.ws ? state.ws.readyState : 'null');
-  console.log('WebSocket.OPEN value:', WebSocket.OPEN);
+  console.log('=== selectMode called ===');
+  console.log('mode:', mode);
+  console.log('state.ws:', state.ws);
+  console.log('state.ws?.readyState:', state.ws?.readyState);
+  console.log('WebSocket.OPEN:', WebSocket.OPEN);
+  console.log('state.welcomeReceived:', state.welcomeReceived);
   
+  // Ensure we're ready
+  if (!state.welcomeReceived) {
+    console.error('Not ready to select mode yet - welcome not received');
+    showTransientMessage('Not ready yet - try again', 1500);
+    return;
+  }
+  
+  if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+    console.error('WebSocket not open!');
+    showTransientMessage('WebSocket not connected - try again', 1500);
+    return;
+  }
+
   state.gameMode = mode;
   state.gameState = 'queue';
   
@@ -75,31 +90,28 @@ export function selectMode(mode) {
   console.log('Showing queue screen...');
   dom.showQueueScreen();
   
-  showTransientMessage(`Joining ${mode} queue...`, 2000);
+  showTransientMessage(`Joining ${mode} queue...`, 1500);
   
-  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-    try {
-      const msg = JSON.stringify({ t: 'join_queue', mode: mode });
-      console.log('Sending join_queue message:', msg);
-      state.ws.send(msg);
-      console.log('Successfully sent join_queue for mode:', mode);
-    } catch (e) {
-      console.error('Failed to send join_queue:', e);
-      showTransientMessage('Failed to join queue: ' + e.message, 2000);
-    }
-  } else {
-    console.error('WebSocket not ready!');
-    console.error('  - state.ws exists:', !!state.ws);
-    console.error('  - state.ws.readyState:', state.ws ? state.ws.readyState : 'N/A');
-    console.error('  - WebSocket.OPEN:', WebSocket.OPEN);
-    showTransientMessage('Not connected to server. Try again.', 2000);
+  console.log('Sending join_queue message...');
+  try {
+    const msg = { t: 'join_queue', mode: mode };
+    console.log('Message to send:', msg);
+    state.ws.send(JSON.stringify(msg));
+    console.log('✓ Successfully sent join_queue for mode:', mode);
+  } catch (e) {
+    console.error('✗ Failed to send join_queue:', e);
+    showTransientMessage('Failed to join queue: ' + e.message, 2000);
+    // Revert state
+    dom.showModeSelectScreen();
+    dom.hideQueueScreen();
+    state.gameState = 'mode_select';
   }
 }
 
 // Wire up play button
 if (state.dom.playButton) {
   state.dom.playButton.addEventListener('click', startGame);
-  console.log('Wired play button');
+  console.log('✓ Wired play button');
 }
 
 // Wire up username input enter key
@@ -110,14 +122,14 @@ if (state.dom.usernameInput) {
       startGame(); 
     }
   });
-  console.log('Wired username input');
+  console.log('✓ Wired username input');
 }
 
 // Wire up FFA button - CRITICAL
 function wireUpFfaButton() {
   const ffaBtn = document.getElementById('ffaButton');
   if (ffaBtn) {
-    console.log('Found FFA button, wiring click handler');
+    console.log('✓ Found FFA button, wiring click handler');
     ffaBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -125,7 +137,7 @@ function wireUpFfaButton() {
       selectMode('ffa');
     });
   } else {
-    console.warn('FFA button not found');
+    console.warn('✗ FFA button not found in DOM');
   }
 }
 
@@ -133,11 +145,11 @@ function wireUpFfaButton() {
 function wireUpCancelQueueButton() {
   const cancelBtn = document.getElementById('cancelQueueBtn');
   if (cancelBtn) {
-    console.log('Found cancel queue button, wiring click handler');
+    console.log('✓ Found cancel queue button, wiring click handler');
     cancelBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      console.log('Cancel queue button clicked');
+      console.log('✓ Cancel queue button clicked');
       state.gameState = 'mode_select';
       dom.hideQueueScreen();
       dom.showModeSelectScreen();
@@ -145,11 +157,14 @@ function wireUpCancelQueueButton() {
       if (state.ws && state.ws.readyState === WebSocket.OPEN) {
         try {
           state.ws.send(JSON.stringify({ t: 'cancel_queue' }));
-        } catch (e) {}
+          console.log('✓ Sent cancel_queue to server');
+        } catch (e) {
+          console.error('Failed to send cancel_queue:', e);
+        }
       }
     });
   } else {
-    console.warn('Cancel queue button not found');
+    console.warn('✗ Cancel queue button not found in DOM');
   }
 }
 
@@ -157,8 +172,9 @@ function wireUpCancelQueueButton() {
 wireUpFfaButton();
 wireUpCancelQueueButton();
 
-// Also try on DOM content loaded
+// Also try on DOM content loaded to ensure buttons exist
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('✓ DOMContentLoaded event fired');
   wireUpFfaButton();
   wireUpCancelQueueButton();
 });
@@ -176,7 +192,9 @@ window.moborr = {
   connectToServer: network.connectToServer,
   appendChatMessage,
   castSkill: input.castSkill,
-  selectTarget: (id, kind) => { state.selectedTarget = { id: String(id), kind }; }
+  selectTarget: (id, kind) => { state.selectedTarget = { id: String(id), kind }; },
+  state,
+  dom
 };
 
-console.log('Main.js initialized - window.moborr is ready');
+console.log('✓ Main.js initialized - window.moborr is ready');

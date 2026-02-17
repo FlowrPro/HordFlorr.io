@@ -434,7 +434,7 @@ export function handleServerMessage(msg) {
           if (state.dom && typeof state.dom.updateAllSlotVisuals === 'function') state.dom.updateAllSlotVisuals();
         } catch (e) {}
 
-      } else {
+       } else {
         let rp = state.remotePlayers.get(id);
         if (!rp) {
           rp = { 
@@ -449,7 +449,9 @@ export function handleServerMessage(msg) {
             radius: sp.radius, 
             color: sp.color || '#ff7', 
             level: sp.level || 1, 
-            kills: sp.kills || 0 
+            kills: sp.kills || 0,
+            hp: sp.hp || 100,           // ✅ ADD THIS
+            maxHp: sp.maxHp || 100      // ✅ ADD THIS
           };
           state.remotePlayers.set(id, rp);
         } else {
@@ -462,6 +464,8 @@ export function handleServerMessage(msg) {
           rp.color = sp.color || rp.color; 
           rp.level = sp.level || rp.level; 
           rp.kills = sp.kills || 0;
+          rp.hp = sp.hp || rp.hp;       
+          rp.maxHp = sp.maxHp || rp.maxHp; 
         }
       }
     }

@@ -446,7 +446,7 @@ function drawWorld(vw, vh, dt) {
   }
   dom.ctx.restore();
 
-    // draw remote players
+  // draw remote players
   dom.ctx.save();
   for (const rp of state.remotePlayers.values()) {
     const interpFactor = 1 - Math.exp(-state.REMOTE_INTERP_SPEED * dt);
@@ -465,6 +465,29 @@ function drawWorld(vw, vh, dt) {
       dom.ctx.fillStyle = '#fff';
       dom.ctx.fillText(rp.name, rp.displayX, rp.displayY - rp.radius - 12);
     }
+    
+    // ✅ DRAW HEALTH BAR FOR REMOTE PLAYERS
+    if (typeof rp.hp === 'number' && typeof rp.maxHp === 'number' && rp.maxHp > 0) {
+      const pct = Math.max(0, Math.min(1, rp.hp / rp.maxHp));
+      const barW = Math.max(24, (rp.radius || 28) * 1.6);
+      const barH = 5;
+      const barX = rp.displayX - barW / 2;
+      const barY = rp.displayY - rp.radius - 18;
+      
+      dom.ctx.save();
+      dom.ctx.globalAlpha = 0.95;
+      // Background
+      dom.ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      dom.ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+      // Bar frame
+      dom.ctx.fillStyle = '#222';
+      dom.ctx.fillRect(barX, barY, barW, barH);
+      // Health fill
+      dom.ctx.fillStyle = '#e74c3c';
+      dom.ctx.fillRect(barX, barY, Math.max(1, barW * pct), barH);
+      dom.ctx.restore();
+    }
+    
     if (rp.stunnedUntil && rp.stunnedUntil > Date.now()) {
       dom.ctx.font = '14px system-ui, Arial'; dom.ctx.textAlign = 'center'; dom.ctx.textBaseline = 'bottom'; dom.ctx.fillStyle = 'rgba(255,255,255,0.9)';
       dom.ctx.fillText('❌', rp.displayX, rp.displayY - rp.radius - 6);

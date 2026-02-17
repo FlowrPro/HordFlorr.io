@@ -446,7 +446,7 @@ function drawWorld(vw, vh, dt) {
   }
   dom.ctx.restore();
 
-  // draw remote players
+    // draw remote players
   dom.ctx.save();
   for (const rp of state.remotePlayers.values()) {
     const interpFactor = 1 - Math.exp(-state.REMOTE_INTERP_SPEED * dt);

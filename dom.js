@@ -526,7 +526,6 @@ endGameScreen.style.flexDirection = 'column';
 endGameScreen.style.gap = '24px';
 endGameScreen.style.padding = '20px';
 endGameScreen.style.boxSizing = 'border-box';
-endGameScreen.style.display = 'flex';
 document.body.appendChild(endGameScreen);
 
 export function showEndGameScreen(leaderboard) {

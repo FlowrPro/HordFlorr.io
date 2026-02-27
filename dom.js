@@ -399,7 +399,6 @@ export function hideModeSelectScreen() {
     modeSelectScreen.style.visibility = 'hidden';
   }
 }
-
 // --- QUEUE SCREEN ---
 const queueScreen = document.createElement('div');
 queueScreen.id = 'queueScreen';
@@ -511,127 +510,142 @@ export function updateCountdownDisplay(remainingMs, players, currentCount, maxCo
 }
 
 // --- END GAME SCREEN ---
-const endGameOverlay = document.createElement('div');
-endGameOverlay.id = 'endGameOverlay';
-endGameOverlay.style.position = 'fixed';
-endGameOverlay.style.inset = '0';
-endGameOverlay.style.display = 'none';
-endGameOverlay.style.visibility = 'hidden';
-endGameOverlay.style.zIndex = 10050;
-endGameOverlay.style.background = 'rgba(20,20,22,0.8)';
-endGameOverlay.style.backdropFilter = 'grayscale(40%) blur(2px)';
-endGameOverlay.style.webkitBackdropFilter = 'grayscale(40%) blur(2px)';
-endGameOverlay.style.alignItems = 'center';
-endGameOverlay.style.justifyContent = 'center';
-endGameOverlay.style.pointerEvents = 'auto';
-endGameOverlay.style.flexDirection = 'column';
-endGameOverlay.style.gap = '18px';
-endGameOverlay.style.padding = '20px';
-endGameOverlay.style.boxSizing = 'border-box';
-
-const endGameBox = document.createElement('div');
-endGameBox.style.background = 'linear-gradient(180deg, rgba(30,30,30,0.98), rgba(18,18,20,0.98))';
-endGameBox.style.color = '#fff';
-endGameBox.style.padding = '28px';
-endGameBox.style.borderRadius = '12px';
-endGameBox.style.boxShadow = '0 16px 60px rgba(0,0,0,0.6)';
-endGameBox.style.maxWidth = 'min(90vw, 620px)';
-endGameBox.style.textAlign = 'center';
-endGameBox.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial';
-endGameBox.style.pointerEvents = 'auto';
-endGameBox.style.maxHeight = '80vh';
-endGameBox.style.overflowY = 'auto';
-
-const endGameTitle = document.createElement('div');
-endGameTitle.textContent = 'Match Ended';
-endGameTitle.style.fontSize = '28px';
-endGameTitle.style.fontWeight = '800';
-endGameTitle.style.color = '#ffd54a';
-endGameTitle.style.marginBottom = '8px';
-
-const endGameLeaderboard = document.createElement('div');
-endGameLeaderboard.style.display = 'flex';
-endGameLeaderboard.style.flexDirection = 'column';
-endGameLeaderboard.style.gap = '8px';
-endGameLeaderboard.style.marginBottom = '16px';
-endGameLeaderboard.style.maxHeight = '300px';
-endGameLeaderboard.style.overflowY = 'auto';
-
-const endGameBackBtn = document.createElement('button');
-endGameBackBtn.id = 'endGameBackBtn';
-endGameBackBtn.type = 'button';
-endGameBackBtn.textContent = 'Back to Mode Select';
-endGameBackBtn.style.fontSize = '16px';
-endGameBackBtn.style.padding = '10px 16px';
-endGameBackBtn.style.borderRadius = '8px';
-endGameBackBtn.style.border = 'none';
-endGameBackBtn.style.background = '#1e90ff';
-endGameBackBtn.style.color = '#fff';
-endGameBackBtn.style.cursor = 'pointer';
-endGameBackBtn.style.boxShadow = '0 8px 24px rgba(30,144,255,0.18)';
-
-endGameBackBtn.addEventListener('click', () => {
-  try {
-    hideEndGameScreen();
-    state.gameState = 'mode_select';
-    showModeSelectScreen();
-  } catch (e) {}
-});
-
-endGameBox.appendChild(endGameTitle);
-endGameBox.appendChild(endGameLeaderboard);
-endGameBox.appendChild(endGameBackBtn);
-endGameOverlay.appendChild(endGameBox);
-document.body.appendChild(endGameOverlay);
+const endGameScreen = document.createElement('div');
+endGameScreen.id = 'endGameScreen';
+endGameScreen.style.position = 'fixed';
+endGameScreen.style.inset = '0';
+endGameScreen.style.display = 'none';
+endGameScreen.style.zIndex = '10100';
+endGameScreen.style.background = 'rgba(10,10,12,0.95)';
+endGameScreen.style.backdropFilter = 'blur(4px)';
+endGameScreen.style.webkitBackdropFilter = 'blur(4px)';
+endGameScreen.style.alignItems = 'center';
+endGameScreen.style.justifyContent = 'center';
+endGameScreen.style.pointerEvents = 'auto';
+endGameScreen.style.flexDirection = 'column';
+endGameScreen.style.gap = '24px';
+endGameScreen.style.padding = '20px';
+endGameScreen.style.boxSizing = 'border-box';
+endGameScreen.style.display = 'flex';
+document.body.appendChild(endGameScreen);
 
 export function showEndGameScreen(leaderboard) {
   try {
-    if (!leaderboard || !Array.isArray(leaderboard)) return;
+    endGameScreen.innerHTML = '';
     
-    endGameLeaderboard.innerHTML = '';
+    const title = document.createElement('div');
+    title.textContent = '🏁 Match Ended';
+    title.style.fontSize = '48px';
+    title.style.fontWeight = '800';
+    title.style.color = '#ffd54a';
+    title.style.textShadow = '0 4px 12px rgba(0,0,0,0.6)';
+    title.style.marginBottom = '12px';
+    endGameScreen.appendChild(title);
     
-    for (let i = 0; i < Math.min(10, leaderboard.length); i++) {
-      const entry = leaderboard[i];
-      const entryEl = document.createElement('div');
-      entryEl.style.padding = '12px';
-      entryEl.style.background = i === 0 ? 'rgba(255,215,0,0.15)' : 'rgba(255,255,255,0.05)';
-      entryEl.style.borderRadius = '4px';
-      entryEl.style.display = 'flex';
-      entryEl.style.justifyContent = 'space-between';
-      entryEl.style.alignItems = 'center';
-      entryEl.style.fontSize = '14px';
-      
-      const rankAndName = document.createElement('div');
-      rankAndName.style.display = 'flex';
-      rankAndName.style.alignItems = 'center';
-      rankAndName.style.gap = '12px';
-      
-      const rank = document.createElement('div');
-      rank.textContent = `#${i + 1}`;
-      rank.style.fontWeight = '800';
-      rank.style.color = i === 0 ? '#ffd54a' : '#fff';
-      rank.style.minWidth = '40px';
-      
-      const name = document.createElement('div');
-      name.textContent = entry.playerName || 'Player';
-      name.style.color = i === 0 ? '#ffd54a' : '#fff';
-      
-      rankAndName.appendChild(rank);
-      rankAndName.appendChild(name);
-      
-      const kills = document.createElement('div');
-      kills.textContent = `${entry.kills} kills`;
-      kills.style.color = i === 0 ? '#ffd54a' : 'rgba(255,255,255,0.7)';
-      
-      entryEl.appendChild(rankAndName);
-      entryEl.appendChild(kills);
-      endGameLeaderboard.appendChild(entryEl);
+    const leaderboardContainer = document.createElement('div');
+    leaderboardContainer.style.display = 'flex';
+    leaderboardContainer.style.flexDirection = 'column';
+    leaderboardContainer.style.gap = '12px';
+    leaderboardContainer.style.background = 'rgba(30,30,30,0.8)';
+    leaderboardContainer.style.padding = '24px';
+    leaderboardContainer.style.borderRadius = '12px';
+    leaderboardContainer.style.maxWidth = 'min(90vw, 500px)';
+    leaderboardContainer.style.maxHeight = '60vh';
+    leaderboardContainer.style.overflowY = 'auto';
+    leaderboardContainer.style.boxShadow = '0 16px 60px rgba(0,0,0,0.6)';
+    
+    const leaderboardTitle = document.createElement('div');
+    leaderboardTitle.textContent = 'Final Leaderboard';
+    leaderboardTitle.style.fontSize = '24px';
+    leaderboardTitle.style.fontWeight = '800';
+    leaderboardTitle.style.color = '#fff';
+    leaderboardTitle.style.marginBottom = '12px';
+    leaderboardTitle.style.textAlign = 'center';
+    leaderboardContainer.appendChild(leaderboardTitle);
+    
+    if (Array.isArray(leaderboard) && leaderboard.length > 0) {
+      for (let i = 0; i < leaderboard.length; i++) {
+        const entry = leaderboard[i];
+        const entryEl = document.createElement('div');
+        entryEl.style.display = 'flex';
+        entryEl.style.justifyContent = 'space-between';
+        entryEl.style.alignItems = 'center';
+        entryEl.style.padding = '12px 16px';
+        entryEl.style.background = i === 0 ? 'rgba(255,215,0,0.2)' : 'rgba(255,255,255,0.05)';
+        entryEl.style.borderRadius = '8px';
+        entryEl.style.borderLeft = i === 0 ? '4px solid #ffd54a' : 'none';
+        
+        const rankAndName = document.createElement('div');
+        rankAndName.style.display = 'flex';
+        rankAndName.style.alignItems = 'center';
+        rankAndName.style.gap = '12px';
+        
+        const rank = document.createElement('span');
+        const medals = ['🥇', '🥈', '🥉'];
+        rank.textContent = medals[i] || `#${i + 1}`;
+        rank.style.fontSize = '20px';
+        rankAndName.appendChild(rank);
+        
+        const name = document.createElement('span');
+        name.textContent = entry.playerName || `Player ${i + 1}`;
+        name.style.fontSize = '16px';
+        name.style.fontWeight = '700';
+        name.style.color = i === 0 ? '#ffd54a' : '#fff';
+        rankAndName.appendChild(name);
+        
+        const kills = document.createElement('span');
+        kills.textContent = `${entry.kills} kills`;
+        kills.style.fontSize = '16px';
+        kills.style.color = '#aaa';
+        kills.style.fontWeight = '600';
+        
+        entryEl.appendChild(rankAndName);
+        entryEl.appendChild(kills);
+        leaderboardContainer.appendChild(entryEl);
+      }
+    } else {
+      const noData = document.createElement('div');
+      noData.textContent = 'No leaderboard data';
+      noData.style.color = '#aaa';
+      leaderboardContainer.appendChild(noData);
     }
     
-    if (endGameOverlay) {
-      endGameOverlay.style.visibility = 'visible';
-      endGameOverlay.style.display = 'flex';
-    }
+    endGameScreen.appendChild(leaderboardContainer);
+    
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.display = 'flex';
+    buttonContainer.style.gap = '12px';
+    buttonContainer.style.marginTop = '12px';
+    
+    const backButton = document.createElement('button');
+    backButton.type = 'button';
+    backButton.textContent = 'Back to Mode Select';
+    backButton.style.padding = '14px 28px';
+    backButton.style.fontSize = '16px';
+    backButton.style.fontWeight = '700';
+    backButton.style.borderRadius = '8px';
+    backButton.style.border = 'none';
+    backButton.style.background = '#1e90ff';
+    backButton.style.color = '#fff';
+    backButton.style.cursor = 'pointer';
+    backButton.style.boxShadow = '0 8px 24px rgba(30,144,255,0.25)';
+    backButton.addEventListener('click', () => {
+      try {
+        state.gameState = 'mode_select';
+        endGameScreen.style.display = 'none';
+        showModeSelectScreen();
+        hideInventory();
+        if (state.dom.chatPanel) state.dom.chatPanel.style.display = 'none';
+      } catch (e) {
+        console.error('Error returning to mode select:', e);
+      }
+    });
+    buttonContainer.appendChild(backButton);
+    
+    endGameScreen.appendChild(buttonContainer);
+    
+    endGameScreen.style.display = 'flex';
+    console.log('✅ End game screen displayed');
   } catch (e) {
     console.error('Error showing end game screen:', e);
   }
@@ -639,10 +653,7 @@ export function showEndGameScreen(leaderboard) {
 
 export function hideEndGameScreen() {
   try {
-    if (endGameOverlay) {
-      endGameOverlay.style.display = 'none';
-      endGameOverlay.style.visibility = 'hidden';
-    }
+    endGameScreen.style.display = 'none';
   } catch (e) {}
 }
 
@@ -661,7 +672,7 @@ state.dom = {
   reconnectOverlay,
   modeSelectScreen,
   queueScreen,
-  endGameOverlay,
+  endGameScreen,
   showModeSelectScreen,
   hideModeSelectScreen,
   showQueueScreen,
@@ -1618,6 +1629,7 @@ export default {
   hideQueueScreen,
   updateQueueDisplay,
   updateCountdownDisplay,
+  endGameScreen,
   showEndGameScreen,
   hideEndGameScreen
 };

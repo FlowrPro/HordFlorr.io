@@ -2,7 +2,7 @@
 // Phase 2: Full matchmaking support
 
 import { state } from './state.js';
-import dom, { appendChatMessage, setLoadingText, cleanupAfterFailedLoad, showDeathOverlay, showReconnectOverlay, hideReconnectOverlay, setReconnectCancelCallback, showTransientMessage, showModeSelectScreen, showQueueScreen, hideQueueScreen, updateQueueDisplay, updateCountdownDisplay } from './dom.js';
+import dom, { appendChatMessage, setLoadingText, cleanupAfterFailedLoad, showDeathOverlay, showReconnectOverlay, hideReconnectOverlay, setReconnectCancelCallback, showTransientMessage, showModeSelectScreen, showQueueScreen, hideQueueScreen, updateQueueDisplay, updateCountdownDisplay, hideInventory, showEndGameScreen } from './dom.js';
 
 const VERBOSE_NETWORK = false;
 
@@ -177,6 +177,16 @@ export function handleServerMessage(msg) {
     state.queuePlayers = queuePlayers.map(p => p.name);
     const currentCount = queuePlayers.length;
     const maxCount = 10;
+    
+    // ✅ Check if countdown was cancelled
+    if (msg.reason === 'cancelled_insufficient_players') {
+      console.warn('❌ Queue countdown cancelled: insufficient players');
+      state.gameState = 'queue';
+      try { updateQueueDisplay(state.queuePlayers, currentCount, maxCount); } catch (e) {}
+      try { showTransientMessage('Countdown cancelled: players left queue', 2000); } catch (e) {}
+      return;
+    }
+    
     try {
       updateQueueDisplay(state.queuePlayers, currentCount, maxCount);
       console.log(`✓ Queue updated: ${currentCount}/${maxCount} players`);
@@ -200,6 +210,17 @@ export function handleServerMessage(msg) {
     const currentCount = countdownPlayers.length;
     const maxCount = 10;
     
+    // ✅ Check if this is a cancellation message
+    if (msg.reason === 'cancelled_insufficient_players' || msg.reason === 'countdown_ended_insufficient_players') {
+      console.warn('❌ Match cancelled: insufficient players');
+      state.gameState = 'mode_select';
+      try { hideQueueScreen(); } catch (e) {}
+      try { hideInventory(); } catch (e) {}
+      try { showModeSelectScreen(); } catch (e) {}
+      try { showTransientMessage('Match cancelled: not enough players', 2500); } catch (e) {}
+      return;
+    }
+    
     // If less than MIN_PLAYERS and countdown still going, show message
     if (currentCount < 4 && remaining > 0) {
       console.warn('⚠️ Not enough players:', currentCount, '- need 4, countdown still going');
@@ -209,20 +230,9 @@ export function handleServerMessage(msg) {
       updateCountdownDisplay(remaining, countdownPlayers.map(p => p.name), currentCount, maxCount);
     } catch (e) { console.error('Error updating countdown display:', e); }
     
-    // If countdown reached zero with not enough players, return to mode select
-    if (remaining <= 0 && currentCount < 4) {
-      console.warn('❌ Match cancelled: insufficient players');
-      state.gameState = 'mode_select';
-      try { hideQueueScreen(); } catch (e) {}
-      try { dom.hideInventory(); } catch (e) {}
-      try { showModeSelectScreen(); } catch (e) {}
-      try { showTransientMessage('Match cancelled: not enough players', 2500); } catch (e) {}
-      return;
-    }
-    
-    // If countdown reached zero with enough players, wait for match_start
-    if (remaining <= 0) {
-      console.log('⏱️ Countdown ended - waiting for match_start...');
+    // ✅ Only proceed if we have enough players
+    if (remaining <= 0 && currentCount >= 4) {
+      console.log('⏱️ Countdown ended with sufficient players - waiting for match_start...');
     }
     return;
     
@@ -293,20 +303,6 @@ export function handleServerMessage(msg) {
     } catch (e) {}
     
     console.log('✓ Match started - entering game');
-    return;
-  }
-  
-  // ✅ NEW: Match end screen
-  else if (msg.t === 'match_end') {
-    console.log('🏁 MATCH END received:', msg);
-    state.gameState = 'match_end';
-    state.matchLeaderboard = msg.leaderboard || [];
-    
-    try { 
-      hideQueueScreen();
-      dom.hideInventory();
-      dom.showEndGameScreen(state.matchLeaderboard);
-    } catch (e) { console.error('Error showing end game screen:', e); }
     return;
   }
   
@@ -479,8 +475,8 @@ export function handleServerMessage(msg) {
           rp.color = sp.color || rp.color; 
           rp.level = sp.level || rp.level; 
           rp.kills = sp.kills || 0;
-          rp.hp = sp.hp || rp.hp;
-          rp.maxHp = sp.maxHp || rp.maxHp;
+          rp.hp = sp.hp || rp.hp;       
+          rp.maxHp = sp.maxHp || rp.maxHp; 
         }
       }
     }
@@ -651,7 +647,6 @@ export function handleServerMessage(msg) {
       if (rm) {
         rm.dead = true;
         rm.hp = 0;
-        rm.alpha = 1.0;
       }
     }
     if (String(killerId) === String(state.player.id) && xp > 0) {
@@ -860,6 +855,21 @@ export function handleServerMessage(msg) {
         rp.dead = true;
       }
     }
+  }
+  else if (msg.t === 'match_ended') {
+    console.log('🏁 MATCH ENDED:', msg);
+    state.gameState = 'match_ended';
+    const leaderboard = msg.leaderboard || [];
+    
+    try { hideQueueScreen(); } catch (e) {}
+    try { hideInventory(); } catch (e) {}
+    try { showEndGameScreen(leaderboard); } catch (e) {}
+    
+    if (state.sendInputInterval) { clearInterval(state.sendInputInterval); state.sendInputInterval = null; }
+    if (state.dom.chatInput) state.dom.chatInput.disabled = true;
+    if (state.dom.chatPanel) state.dom.chatPanel.style.display = 'none';
+    
+    return;
   }
 }
 

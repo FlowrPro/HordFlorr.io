@@ -399,6 +399,7 @@ export function hideModeSelectScreen() {
     modeSelectScreen.style.visibility = 'hidden';
   }
 }
+
 // --- QUEUE SCREEN ---
 const queueScreen = document.createElement('div');
 queueScreen.id = 'queueScreen';
@@ -509,6 +510,142 @@ export function updateCountdownDisplay(remainingMs, players, currentCount, maxCo
   }
 }
 
+// --- END GAME SCREEN ---
+const endGameOverlay = document.createElement('div');
+endGameOverlay.id = 'endGameOverlay';
+endGameOverlay.style.position = 'fixed';
+endGameOverlay.style.inset = '0';
+endGameOverlay.style.display = 'none';
+endGameOverlay.style.visibility = 'hidden';
+endGameOverlay.style.zIndex = 10050;
+endGameOverlay.style.background = 'rgba(20,20,22,0.8)';
+endGameOverlay.style.backdropFilter = 'grayscale(40%) blur(2px)';
+endGameOverlay.style.webkitBackdropFilter = 'grayscale(40%) blur(2px)';
+endGameOverlay.style.alignItems = 'center';
+endGameOverlay.style.justifyContent = 'center';
+endGameOverlay.style.pointerEvents = 'auto';
+endGameOverlay.style.flexDirection = 'column';
+endGameOverlay.style.gap = '18px';
+endGameOverlay.style.padding = '20px';
+endGameOverlay.style.boxSizing = 'border-box';
+
+const endGameBox = document.createElement('div');
+endGameBox.style.background = 'linear-gradient(180deg, rgba(30,30,30,0.98), rgba(18,18,20,0.98))';
+endGameBox.style.color = '#fff';
+endGameBox.style.padding = '28px';
+endGameBox.style.borderRadius = '12px';
+endGameBox.style.boxShadow = '0 16px 60px rgba(0,0,0,0.6)';
+endGameBox.style.maxWidth = 'min(90vw, 620px)';
+endGameBox.style.textAlign = 'center';
+endGameBox.style.fontFamily = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial';
+endGameBox.style.pointerEvents = 'auto';
+endGameBox.style.maxHeight = '80vh';
+endGameBox.style.overflowY = 'auto';
+
+const endGameTitle = document.createElement('div');
+endGameTitle.textContent = 'Match Ended';
+endGameTitle.style.fontSize = '28px';
+endGameTitle.style.fontWeight = '800';
+endGameTitle.style.color = '#ffd54a';
+endGameTitle.style.marginBottom = '8px';
+
+const endGameLeaderboard = document.createElement('div');
+endGameLeaderboard.style.display = 'flex';
+endGameLeaderboard.style.flexDirection = 'column';
+endGameLeaderboard.style.gap = '8px';
+endGameLeaderboard.style.marginBottom = '16px';
+endGameLeaderboard.style.maxHeight = '300px';
+endGameLeaderboard.style.overflowY = 'auto';
+
+const endGameBackBtn = document.createElement('button');
+endGameBackBtn.id = 'endGameBackBtn';
+endGameBackBtn.type = 'button';
+endGameBackBtn.textContent = 'Back to Mode Select';
+endGameBackBtn.style.fontSize = '16px';
+endGameBackBtn.style.padding = '10px 16px';
+endGameBackBtn.style.borderRadius = '8px';
+endGameBackBtn.style.border = 'none';
+endGameBackBtn.style.background = '#1e90ff';
+endGameBackBtn.style.color = '#fff';
+endGameBackBtn.style.cursor = 'pointer';
+endGameBackBtn.style.boxShadow = '0 8px 24px rgba(30,144,255,0.18)';
+
+endGameBackBtn.addEventListener('click', () => {
+  try {
+    hideEndGameScreen();
+    state.gameState = 'mode_select';
+    showModeSelectScreen();
+  } catch (e) {}
+});
+
+endGameBox.appendChild(endGameTitle);
+endGameBox.appendChild(endGameLeaderboard);
+endGameBox.appendChild(endGameBackBtn);
+endGameOverlay.appendChild(endGameBox);
+document.body.appendChild(endGameOverlay);
+
+export function showEndGameScreen(leaderboard) {
+  try {
+    if (!leaderboard || !Array.isArray(leaderboard)) return;
+    
+    endGameLeaderboard.innerHTML = '';
+    
+    for (let i = 0; i < Math.min(10, leaderboard.length); i++) {
+      const entry = leaderboard[i];
+      const entryEl = document.createElement('div');
+      entryEl.style.padding = '12px';
+      entryEl.style.background = i === 0 ? 'rgba(255,215,0,0.15)' : 'rgba(255,255,255,0.05)';
+      entryEl.style.borderRadius = '4px';
+      entryEl.style.display = 'flex';
+      entryEl.style.justifyContent = 'space-between';
+      entryEl.style.alignItems = 'center';
+      entryEl.style.fontSize = '14px';
+      
+      const rankAndName = document.createElement('div');
+      rankAndName.style.display = 'flex';
+      rankAndName.style.alignItems = 'center';
+      rankAndName.style.gap = '12px';
+      
+      const rank = document.createElement('div');
+      rank.textContent = `#${i + 1}`;
+      rank.style.fontWeight = '800';
+      rank.style.color = i === 0 ? '#ffd54a' : '#fff';
+      rank.style.minWidth = '40px';
+      
+      const name = document.createElement('div');
+      name.textContent = entry.playerName || 'Player';
+      name.style.color = i === 0 ? '#ffd54a' : '#fff';
+      
+      rankAndName.appendChild(rank);
+      rankAndName.appendChild(name);
+      
+      const kills = document.createElement('div');
+      kills.textContent = `${entry.kills} kills`;
+      kills.style.color = i === 0 ? '#ffd54a' : 'rgba(255,255,255,0.7)';
+      
+      entryEl.appendChild(rankAndName);
+      entryEl.appendChild(kills);
+      endGameLeaderboard.appendChild(entryEl);
+    }
+    
+    if (endGameOverlay) {
+      endGameOverlay.style.visibility = 'visible';
+      endGameOverlay.style.display = 'flex';
+    }
+  } catch (e) {
+    console.error('Error showing end game screen:', e);
+  }
+}
+
+export function hideEndGameScreen() {
+  try {
+    if (endGameOverlay) {
+      endGameOverlay.style.display = 'none';
+      endGameOverlay.style.visibility = 'hidden';
+    }
+  } catch (e) {}
+}
+
 // --- Expose core DOM refs early for main.js usage ---
 state.dom = {
   canvas, ctx,
@@ -524,12 +661,15 @@ state.dom = {
   reconnectOverlay,
   modeSelectScreen,
   queueScreen,
+  endGameOverlay,
   showModeSelectScreen,
   hideModeSelectScreen,
   showQueueScreen,
   hideQueueScreen,
   updateQueueDisplay,
-  updateCountdownDisplay
+  updateCountdownDisplay,
+  showEndGameScreen,
+  hideEndGameScreen
 };
 
 // Hide chat panel until game is ready
@@ -1477,5 +1617,7 @@ export default {
   showQueueScreen,
   hideQueueScreen,
   updateQueueDisplay,
-  updateCountdownDisplay
+  updateCountdownDisplay,
+  showEndGameScreen,
+  hideEndGameScreen
 };

@@ -214,6 +214,7 @@ export function handleServerMessage(msg) {
       console.warn('❌ Match cancelled: insufficient players');
       state.gameState = 'mode_select';
       try { hideQueueScreen(); } catch (e) {}
+      try { dom.hideInventory(); } catch (e) {}
       try { showModeSelectScreen(); } catch (e) {}
       try { showTransientMessage('Match cancelled: not enough players', 2500); } catch (e) {}
       return;
@@ -292,6 +293,20 @@ export function handleServerMessage(msg) {
     } catch (e) {}
     
     console.log('✓ Match started - entering game');
+    return;
+  }
+  
+  // ✅ NEW: Match end screen
+  else if (msg.t === 'match_end') {
+    console.log('🏁 MATCH END received:', msg);
+    state.gameState = 'match_end';
+    state.matchLeaderboard = msg.leaderboard || [];
+    
+    try { 
+      hideQueueScreen();
+      dom.hideInventory();
+      dom.showEndGameScreen(state.matchLeaderboard);
+    } catch (e) { console.error('Error showing end game screen:', e); }
     return;
   }
   
@@ -450,8 +465,8 @@ export function handleServerMessage(msg) {
             color: sp.color || '#ff7', 
             level: sp.level || 1, 
             kills: sp.kills || 0,
-            hp: sp.hp || 100,           // ✅ ADD THIS
-            maxHp: sp.maxHp || 100      // ✅ ADD THIS
+            hp: sp.hp || 100,
+            maxHp: sp.maxHp || 100
           };
           state.remotePlayers.set(id, rp);
         } else {
@@ -464,8 +479,8 @@ export function handleServerMessage(msg) {
           rp.color = sp.color || rp.color; 
           rp.level = sp.level || rp.level; 
           rp.kills = sp.kills || 0;
-          rp.hp = sp.hp || rp.hp;       
-          rp.maxHp = sp.maxHp || rp.maxHp; 
+          rp.hp = sp.hp || rp.hp;
+          rp.maxHp = sp.maxHp || rp.maxHp;
         }
       }
     }
